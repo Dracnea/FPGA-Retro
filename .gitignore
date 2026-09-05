@@ -16,3 +16,6 @@ build_id.v
 build_id.vh
 
 venv/
+
+# compiled test tools
+tools/frametest/frametest

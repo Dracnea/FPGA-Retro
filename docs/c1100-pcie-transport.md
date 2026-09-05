@@ -110,3 +110,30 @@ generated PCIe IP constraints** (`ip_pcie4c_uscale_plus_impl_x1y0.xdc`:
 `set_false_path -from [get_pins sys_reset]`, and a switching-activity constraint
 that only affects power estimation). Build 2 had ten; the eight that vanished
 were ours.
+
+## Hardware bring-up, verified
+
+Loaded over JTAG (`End of startup status: HIGH`), then PCIe remove + rescan.
+The endpoint enumerates and the driver binds:
+
+```
+c1:00.0 Memory controller [0580]: Xilinx Corporation Device [10ee:9034]
+        Control: Mem+ BusMaster+
+        Region 0: Memory at b6c00000 (32-bit, non-prefetchable) [size=128K]
+        Kernel driver in use: litepcie
+/dev/litepcie0
+```
+
+Link parameters read from sysfs:
+
+| | |
+|---|---|
+| current / max link speed | 8.0 GT/s (gen3) |
+| current / max link width | x4 |
+| MSI | allocated, irq 347 |
+
+Link trained at the design's full target, gen3 x4, with no downshift.
+
+**Device node permissions.** The driver creates `/dev/litepcie0` as
+`root:root 0600`, so every tool needs root. `tools/99-litepcie.rules` relaxes
+this to the `plugdev` group, which makes iterating on measurements practical.
