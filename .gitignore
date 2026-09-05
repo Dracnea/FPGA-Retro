@@ -6,8 +6,10 @@ build/
 __pycache__/
 *.pyc
 
-# Generated, and large: bitstreams are build artefacts, not sources
+# Build output is not tracked -- except the images promoted into bitstreams/,
+# which are kept so a card can be brought up without a Vivado seat.
 *.bit
+!bitstreams/*.bit
 *.mcs
 *.ltx
 csr.csv

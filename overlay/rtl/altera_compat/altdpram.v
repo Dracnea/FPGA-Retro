@@ -1,0 +1,53 @@
+// altdpram -- Intel's simple dual-port RAM, used by the Peip cores in its MLAB
+// form (registered write, asynchronous read): maps to LUT RAM here.
+// SPDX-License-Identifier: BSD-2-Clause
+`timescale 1ns/1ps
+module altdpram #(
+    parameter integer width          = 8,
+    parameter integer widthad        = 8,
+    parameter integer numwords       = (1 << widthad),
+    parameter integer width_byteena  = 1,
+    parameter         indata_reg     = "INCLOCK",
+    parameter         outdata_reg    = "UNREGISTERED",
+    parameter         rdaddress_reg  = "UNREGISTERED",
+    parameter         rdcontrol_reg  = "UNREGISTERED",
+    parameter         wraddress_reg  = "INCLOCK",
+    parameter         wrcontrol_reg  = "INCLOCK",
+    parameter         indata_aclr    = "OFF",
+    parameter         outdata_aclr   = "OFF",
+    parameter         rdaddress_aclr = "OFF",
+    parameter         rdcontrol_aclr = "OFF",
+    parameter         wraddress_aclr = "OFF",
+    parameter         wrcontrol_aclr = "OFF",
+    parameter         ram_block_type = "MLAB",
+    parameter         read_during_write_mode_mixed_ports = "CONSTRAINED_DONT_CARE",
+    parameter         intended_device_family = "Cyclone V",
+    parameter         lpm_type       = "altdpram",
+    parameter         lpm_hint       = "UNUSED",
+    parameter         use_eab        = "OFF"
+) (
+    input  wire [width-1:0]         data,
+    input  wire [widthad-1:0]       wraddress,
+    input  wire [widthad-1:0]       rdaddress,
+    input  wire                     wren,
+    input  wire                     rden,
+    input  wire                     inclock,
+    input  wire                     outclock,
+    input  wire                     inclocken,
+    input  wire                     outclocken,
+    input  wire [width_byteena-1:0] byteena,
+    input  wire                     aclr,
+    output wire [width-1:0]         q
+);
+    localparam integer BE = width / width_byteena;
+    (* ram_style = "distributed" *) reg [width-1:0] mem [0:numwords-1];
+    integer j;
+    always @(posedge inclock)
+        if (wren)
+            for (j = 0; j < width; j = j + 1)
+                if (byteena[j / BE]) mem[wraddress][j] <= data[j];
+    wire [width-1:0] rd = mem[rdaddress];
+    reg  [width-1:0] rd_q = {width{1'b0}};
+    always @(posedge outclock) rd_q <= rd;
+    assign q = (outdata_reg == "UNREGISTERED") ? rd : rd_q;
+endmodule

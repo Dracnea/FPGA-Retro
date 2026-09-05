@@ -1,0 +1,35 @@
+# N64 on UltraScale+ -- source list for the overlay. Mirrors MiSTeX's convention:
+# sourcedirs are scanned, quartus-listed files are Altera IP left out of the Vivado
+# build, vivado-listed files are the replacements. Everything Intel-specific the
+# upstream RTL instantiates is covered by overlay/rtl/altera_compat instead of
+# per-file ports. The top is upstream's own N64.sv, unmodified.
+mainfile: N64.sv
+
+use-template-sys: True
+
+# The RTL names its RAM/FIFO wrappers as `entity mem.X`; Quartus resolves that
+# through `work`, Vivado needs the library to exist. See tools/core-fit.py.
+vhdl-library: mem
+
+# From the upstream .qsf: the core is written for the MiSTer framebuffer path.
+defines:
+  MISTER_FB: 1
+
+sourcedirs:
+  - sys
+  - upstream/rtl
+
+quartus:
+  sourcefiles:
+    - upstream/rtl/sdram.sv
+    - upstream/rtl/pll/pll_0002.v
+    - upstream/rtl/pll2/pll2_0002.v
+    - upstream/rtl/pll_cfg_small.v
+    - upstream/rtl/cpu_mul.vhd
+
+vivado:
+  sourcefiles:
+    - rtl/cpu_mul.vhd
+    - rtl/sdram.sv
+    - rtl/pll_0002-xilinxusp.v
+    - rtl/pll2_0002-xilinxusp.v
