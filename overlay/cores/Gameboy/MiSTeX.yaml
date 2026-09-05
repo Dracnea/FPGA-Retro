@@ -1,0 +1,41 @@
+# Game Boy / Game Boy Color on UltraScale+ -- source list for the overlay, in
+# MiSTeX's convention: sourcedirs are scanned, quartus-listed files are Altera
+# IP left out of the Vivado build, vivado-listed files are the replacements.
+# MiSTeX-ports has no Gameboy port yet; upstream is MiSTer-devel/Gameboy_MiSTer
+# cloned to cores/Gameboy/upstream. The RAM wrappers (dpram, dpram_dif, spram)
+# instantiate altsyncram directly and are served by overlay/rtl/altera_compat.
+mainfile: Gameboy.sv
+
+use-template-sys: True
+
+# lcd.v and sgb.v declare arrays with a single-value range (`reg [14:0] vbuffer[65536]`)
+# and declarations inside unnamed blocks: SystemVerilog in a .v file.
+sv-as-v:
+  - lcd.v
+  - sgb.v
+
+sourcedirs:
+  - sys
+  - upstream/rtl
+  - upstream/rtl/T80
+  - upstream/rtl/mappers
+  # .mif initialisers only (cgb_boot.mif); converted to .mem by core-fit.py.
+  - upstream/BootROMs
+
+quartus:
+  sourcefiles:
+    - upstream/rtl/pll/pll_0002.v
+    - upstream/rtl/sdram.sv
+    # always_comb writes to nets; Vivado wants variables.
+    - upstream/rtl/cheatcodes.sv
+    - upstream/rtl/megaswizzle.sv
+    # signal'high on an integer-range signal; Vivado wants a type mark.
+    - upstream/rtl/gbc_snd.vhd
+
+vivado:
+  sourcefiles:
+    - rtl/pll_0002-xilinxusp.v
+    - rtl/sdram.sv
+    - rtl/cheatcodes.sv
+    - rtl/megaswizzle.sv
+    - rtl/gbc_snd.vhd

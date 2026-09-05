@@ -128,6 +128,8 @@ def resolve(ports, core, build_dir):
         rel = m.replace(coredir + "/", "").replace("upstream/", "")
         convert_mif(m, join(build_dir, rel))
     defines = y.get("defines", {}) or {}
+    # .v files a core writes in SystemVerilog (per-core `sv-as-v:` list in the yaml).
+    sv_as_v = SV_AS_V | set(y.get("sv-as-v", []) or [])
     # Quartus projects compile some VHDL into named libraries (`entity mem.dpram`):
     # read the same assignments from the .qsf so Vivado sees the same libraries.
     libs = {}
@@ -148,7 +150,7 @@ def resolve(ports, core, build_dir):
         for f in files:
             if f.endswith(".vhd") and "altera_compat" not in f:
                 libs[basename(f)] = y["vhdl-library"]
-    return files, defines, main, libs, vhdl_std
+    return files, defines, main, libs, vhdl_std, sv_as_v
 
 def main():
     ap = argparse.ArgumentParser()
@@ -161,7 +163,7 @@ def main():
     part_short = a.part.split("-")[0]
     bdir = abspath(a.build_dir or join("build", f"fit_{a.core}_{part_short}"))
     os.makedirs(bdir, exist_ok=True)
-    files, defines, main, libs, vhdl_std = resolve(ports, a.core, bdir)
+    files, defines, main, libs, vhdl_std, sv_as_v = resolve(ports, a.core, bdir)
     # build_id stubs -- the tops `include one of these two names.
     for n in ("build_id.v", "build_id.vh"):
         with open(join(bdir, n), "w") as f:
@@ -187,7 +189,7 @@ def main():
                 t.write(f"read_vhdl{std}{lib} {{{f}}}\n")
             # .v is Verilog-2001 -- SNES's main.v uses `do` as a net name -- except
             # the few Quartus-era files that need SystemVerilog rules.
-            elif f.endswith(".sv") or basename(f) in SV_AS_V: t.write(f"read_verilog -sv {{{f}}}\n")
+            elif f.endswith(".sv") or basename(f) in sv_as_v: t.write(f"read_verilog -sv {{{f}}}\n")
             else: t.write(f"read_verilog {{{f}}}\n")
         t.write("set_property include_dirs {%s} [current_fileset]\n" % " ".join(incs))
         if defines:

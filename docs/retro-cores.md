@@ -1,4 +1,4 @@
-# Retro cores on the C1100 and FK33: SNES, GBA, PSX, N64 (and why not PS2)
+# Retro cores on the C1100 and FK33: GB/GBC, SNES, GBA, PSX, N64 (and why not PS2 or GameCube)
 
 What exists upstream for each console, what it needs from a board, what these
 cards can give it, and what the out-of-context synthesis of each core on the
@@ -11,7 +11,7 @@ with Vivado 2026.1; everything else is read from the upstream sources named.
 
 ## The three things every core needs from these cards
 
-None of the four cores can run until three board-side pieces exist, and they
+None of the five cores can run until three board-side pieces exist, and they
 are the same three for all of them — which is why they are worth building
 once, before any core, rather than per core:
 
@@ -38,23 +38,51 @@ once, before any core, rather than per core:
 
 ## Per console
 
-| | SNES | GBA | PSX | N64 | PS2 |
-|---|---|---|---|---|---|
-| upstream | [SNES_MiSTer](https://github.com/MiSTer-devel/SNES_MiSTer) (MiSTeX has a Vivado port) | [GBA_MiSTer](https://github.com/MiSTer-devel/GBA_MiSTer) | [PSX_MiSTer](https://github.com/MiSTer-devel/PSX_MiSTer) | [N64_MiSTer](https://github.com/MiSTer-devel/N64_MiSTer) | **none exists** |
-| author lineage | srg320 | Robert Peip | Robert Peip | Robert Peip (dev ended; community-maintained, last commit 2026-08) | — |
-| core clocks (MHz) | 85.909 / 42.955 (SDRAM/sys) / 21.477 | 100.663 / 50.332 | 33.869 / 67.738 / 101.606 + 53.693 | 62.5 / 93.75 / 125 / 62.5 + 48.68 | — |
-| SDRAM use | ROM ≤ 8 MB, WRAM, SRAM (32 MB module) | cart ROM ≤ 32 MB (64 MB carts and ≥ 32 MB on small modules go to DDR3) | main RAM / BIOS; optional second module | cart ROM (up to 64 MB) + SRAM/FLASH; second module for larger carts | — |
-| DDRAM use | framebuffer only | ROM staging (copied to SDRAM), savestates | VRAM (1 MB) and CD data, savestates | **RDRAM (4/8 MB) — "the SDRAM has no chance" (Peip)**, framebuffer | — |
-| on-chip-only feasible? | yes on both cards (≤ 9 MB) | C1100 yes for ≤ 16 MB carts, FK33 marginal; 32/64 MB carts need HBM | RAM/VRAM/BIOS ~4 MB yes; CD image streams from host | RDRAM 8 MB yes; cart ROM needs HBM on FK33, marginal on C1100 | — |
-| Altera cells used | altsyncram, lpm_mult/divide, scfifo, dcfifo, altddio_out | altsyncram, altddio_out | altsyncram, altdpram, altddio_out | altsyncram, altdpram, altshift_taps, altera_mult_add (64×64), altddio_out, `cyclonev_lcell_comb` in the PLL reconfig | — |
+| | GB/GBC | SNES | GBA | PSX | N64 | PS2 | GameCube |
+|---|---|---|---|---|---|---|---|
+| upstream | [Gameboy_MiSTer](https://github.com/MiSTer-devel/Gameboy_MiSTer) (no MiSTeX port; cloned as `cores/Gameboy/upstream`) | [SNES_MiSTer](https://github.com/MiSTer-devel/SNES_MiSTer) (MiSTeX has a Vivado port) | [GBA_MiSTer](https://github.com/MiSTer-devel/GBA_MiSTer) | [PSX_MiSTer](https://github.com/MiSTer-devel/PSX_MiSTer) | [N64_MiSTer](https://github.com/MiSTer-devel/N64_MiSTer) | **none exists** | **none exists** |
+| author lineage | Till Harbaum's MiST core → MiSTer (paulb-nl, Robert Peip's savestates/rewind) | srg320 | Robert Peip | Robert Peip | Robert Peip (dev ended; community-maintained, last commit 2026-08) | — |
+| core clocks (MHz) | 67.109 (SDRAM) / 33.554 (sys) | 85.909 / 42.955 (SDRAM/sys) / 21.477 | 100.663 / 50.332 | 33.869 / 67.738 / 101.606 + 53.693 | 62.5 / 93.75 / 125 / 62.5 + 48.68 | — |
+| SDRAM use | cart ROM ≤ 8 MB (MBC5), cart RAM | ROM ≤ 8 MB, WRAM, SRAM (32 MB module) | cart ROM ≤ 32 MB (64 MB carts and ≥ 32 MB on small modules go to DDR3) | main RAM / BIOS; optional second module | cart ROM (up to 64 MB) + SRAM/FLASH; second module for larger carts | — |
+| DDRAM use | savestates, rewind buffer | framebuffer only | ROM staging (copied to SDRAM), savestates | VRAM (1 MB) and CD data, savestates | **RDRAM (4/8 MB) — "the SDRAM has no chance" (Peip)**, framebuffer | — |
+| on-chip-only feasible? | yes on both cards (≤ 8 MB ROM + 128 KB) | yes on both cards (≤ 9 MB) | C1100 yes for ≤ 16 MB carts, FK33 marginal; 32/64 MB carts need HBM | RAM/VRAM/BIOS ~4 MB yes; CD image streams from host | RDRAM 8 MB yes; cart ROM needs HBM on FK33, marginal on C1100 | — |
+| Altera cells used | altsyncram, altddio_out | altsyncram, lpm_mult/divide, scfifo, dcfifo, altddio_out | altsyncram, altddio_out | altsyncram, altdpram, altddio_out | altsyncram, altdpram, altshift_taps, altera_mult_add (64×64), altddio_out, `cyclonev_lcell_comb` in the PLL reconfig | — |
 
 **PS2:** there is no PlayStation 2 core for MiSTer or any other FPGA platform,
-and the MiSTer forum's assessment is that none is coming — the Emotion Engine
-(MIPS III + two VU vector units) and the Graphics Synthesizer are an order of
-magnitude past the Saturn, which is itself the hardest thing on MiSTer. The
-one "PS2 on MiSTer" item is a hybrid: the decompiled PS2 Street Fighter III
-running on the ARM with the FPGA doing audio/video. PCSX2 on the host GPU is
-the honest answer for PS2; nothing here changes that.
+and a fresh search (2026-09-05) finds none in progress anywhere: the only
+PS2-related FPGA work is a video-out board for a portable built from real
+PS2 silicon. The MiSTer forum's standing assessment is that none is coming.
+It is worth being precise about *why*, because the question on these cards is
+not the one it is on a DE10-Nano:
+
+- *Area is plausibly there.* The PSX core is 46k LUTs. The Emotion Engine
+  (a two-issue 64-bit MIPS with 128-bit multimedia SIMD), its two vector
+  units, the IOP (which *is* a PSX CPU at 36.8 MHz), the SPU2 and the
+  Graphics Synthesizer would land somewhere in the hundreds of thousands of
+  LUTs on any honest estimate — inside the C1100's 872k, past the FK33's 440k.
+- *Clock is not.* The EE and VUs run at 294.9 MHz and the GS at 147.5 MHz.
+  The PSX core's 33.9 MHz CPU closes at synthesis with an fmax around
+  117 MHz on this fabric; a soft R5900 with its SIMD datapath will not
+  reach a third of 295 MHz, so a cycle-accurate PS2 would have to be
+  multi-cycle everywhere, which is a different (and larger) design.
+- *Bandwidth is the one place these cards are ahead.* The GS's 4 MB of eDRAM
+  on a 2560-bit bus (~48 GB/s) and the 32 MB of RDRAM (3.2 GB/s) are within
+  HBM2's reach on both cards, which is not true of any MiSTer board.
+
+So the PS2 fails on "nothing to port" and on clock, not on fabric size. PCSX2
+on the host GPU remains the honest answer; nothing here changes that.
+
+**GameCube:** the same, one generation later and further out of reach. No
+GameCube core exists for any FPGA (the only hits are a hobby PowerPC soft
+core with no relation to the 750 and a GameCube *controller* project). The
+Gekko is a 486 MHz out-of-order PowerPC 750CXe with paired-single FPU; the
+Flipper GPU runs at 162 MHz with 3 MB of embedded 1T-SRAM and a fixed-function
+TEV pipeline; main memory is 24 MB of 1T-SRAM at 2.6 GB/s plus 16 MB ARAM.
+There is no open out-of-order PowerPC core of that class to start from
+(Microwatt and A2O are in-order or far slower), the clock gap is worse than
+the PS2's, and the MiSTer developers' view — a full-time job for a team — is
+the right one. Dolphin on the host is the answer. Neither PS2 nor GameCube
+gets a row in the measured table because there is no RTL to measure.
 
 ## What it took to get the four cores through Vivado
 
@@ -90,6 +118,12 @@ was fixed in the overlay without editing an upstream file:
   `mem` library). `tools/patch-top.py` fixes the declaration class from the
   errors Vivado reports and writes MiSTeX-style patched copies into the
   overlay; the rest is per-core yaml (`vhdl: 93`, `vhdl-library: mem`).
+  The Game Boy adds the mirror image of the SNES case: `lcd.v` and `sgb.v`
+  are SystemVerilog in `.v` files (`reg [14:0] vbuffer[65536]`, declarations
+  in unnamed blocks), so the yaml lists them under `sv-as-v:`; and its
+  `cheatcodes.sv` / `megaswizzle.sv` write to plain `output`s and `wire`s
+  from `always_comb`, which Quartus accepts and Vivado does not (patched
+  copies under `overlay/cores/Gameboy/rtl/`).
 - **XPM.** MiSTeX's SNES `dpram_dif.vhd` instantiates `xpm_memory_tdpram` in
   write-first mode with `WRITE_PROTECT 0`, which Vivado 2026.1 refuses; the
   overlay copy sets it to 1.
@@ -113,6 +147,8 @@ core's real rates. `tools/patch-top.py` and `tools/fit-summary.py` go with it.
 |---|---|---|---|---|---|---|---|---|---|
 | GBA | xcu55n | 37786 (4.33 %) | 30785 (1.77 %) | 111.5 (8.30 %) | 0 (0.00 %) | 58 (0.97 %) | 100.6 MHz clock: WNS +4.79 ns (fmax ≈ 194 MHz) | clean | 0 |
 | GBA | xcvu33p | 37786 (8.59 %) | 30785 (3.50 %) | 111.5 (16.59 %) | 0 (0.00 %) | 58 (2.01 %) | 100.6 MHz clock: WNS +4.56 ns (fmax ≈ 186 MHz) | clean | 0 |
+| Gameboy | xcu55n | 16686 (1.91 %) | 14306 (0.82 %) | 75 (5.58 %) | 0 (0.00 %) | 2 (0.03 %) | 33.6 MHz clock: WNS +9.27 ns (fmax ≈ 49 MHz) | clean | 0 |
+| Gameboy | xcvu33p | 16686 (3.80 %) | 14306 (1.63 %) | 75 (11.16 %) | 0 (0.00 %) | 2 (0.07 %) | 33.6 MHz clock: WNS +8.41 ns (fmax ≈ 47 MHz) | clean | 0 |
 | N64 | xcu55n | 46188 (5.30 %) | 24345 (1.40 %) | 85.5 (6.36 %) | 0 (0.00 %) | 63 (1.06 %) | 93.7 MHz clock: WNS +4.24 ns (fmax ≈ 156 MHz) | clean | 0 |
 | N64 | xcvu33p | 46188 (10.50 %) | 24345 (2.77 %) | 85.5 (12.72 %) | 0 (0.00 %) | 63 (2.19 %) | 93.7 MHz clock: WNS +5.47 ns (fmax ≈ 192 MHz) | clean | 0 |
 | PSX | xcu55n | 46109 (5.29 %) | 30596 (1.76 %) | 117 (8.71 %) | 0 (0.00 %) | 101 (1.70 %) | 67.7 MHz clock: WNS +6.20 ns (fmax ≈ 117 MHz) | clean | 0 |
@@ -120,7 +156,7 @@ core's real rates. `tools/patch-top.py` and `tools/fit-summary.py` go with it.
 | SNES | xcu55n | 13846 (1.59 %) | 10175 (0.58 %) | 20.5 (1.53 %) | 0 (0.00 %) | 23 (0.39 %) | 21.5 MHz clock: WNS +20.61 ns (fmax ≈ 39 MHz) | clean | 1 |
 | SNES | xcvu33p | 13846 (3.15 %) | 10175 (1.16 %) | 20.5 (3.05 %) | 0 (0.00 %) | 23 (0.80 %) | 21.5 MHz clock: WNS +19.50 ns (fmax ≈ 37 MHz) | clean | 1 |
 
-All four consoles synthesise clean on both dies. Percentages are of the C1100
+All five consoles synthesise clean on both dies. Percentages are of the C1100
 (`xcu55n`, 871,680 LUTs) and the FK33 (`xcvu33p`, 439,680 LUTs); the FK33 rows
 are the same netlists at twice the share. The table is regenerated by
 `tools/fit-summary.py build`.
@@ -131,6 +167,10 @@ synthesis with margin is the one to take forward first.
 
 ## Order of work
 
+0. **Game Boy alongside SNES.** Smaller still (16.7k LUTs, 75 BRAM tiles,
+   8 MB ROM ceiling), the same on-chip memory story, and the simplest video
+   (160×144 at one pixel clock), so it is the cheapest end-to-end proof of
+   the three board pieces once they exist.
 1. **SNES first.** Smallest memory footprint, MiSTeX has already ported its
    RAMs, everything fits on-chip on both cards, and it is the one console
    whose SDRAM traffic (ROM reads) is trivially served from URAM.
