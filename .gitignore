@@ -1,0 +1,18 @@
+# Vivado / LiteX build output
+build/
+*.jou
+*.log
+.Xil/
+__pycache__/
+*.pyc
+
+# Generated, and large: bitstreams are build artefacts, not sources
+*.bit
+*.mcs
+*.ltx
+csr.csv
+analyzer.csv
+build_id.v
+build_id.vh
+
+venv/
