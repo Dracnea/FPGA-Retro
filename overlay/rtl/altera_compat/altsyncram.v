@@ -83,8 +83,8 @@ module altsyncram #(
     localparam integer BEA   = width_a / width_byteena_a;   // data bits per byte-enable lane
     localparam integer BEB   = width_b / width_byteena_b;
     localparam         BIDIR = (operation_mode == "BIDIR_DUAL_PORT");
+    // (a byte-enable lane is never wider than the storage word in any MiSTer use)
 
-    reg [W-1:0] mem [0:DEPTH-1];
 
     wire clk_b  = (address_reg_b == "CLOCK1") ? clock1   : clock0;
     wire en_b   = (address_reg_b == "CLOCK1") ? clocken1 : clocken0;
@@ -92,29 +92,78 @@ module altsyncram #(
 
     reg [width_a-1:0] ra = {width_a{1'b0}};
     reg [width_b-1:0] rb = {width_b{1'b0}};
-    integer i, j;
+    integer i, l;
 
-    always @(posedge clock0) begin
-        if (clocken0) begin
-            for (i = 0; i < RA; i = i + 1) begin
-                for (j = 0; j < W; j = j + 1)
-                    if (wren_a && byteena_a[(i*W + j) / BEA])
-                        mem[address_a*RA + i][j] <= data_a[i*W + j];
-                if (rden_a) ra[i*W +: W] <= mem[address_a*RA + i];
+    // Two shapes Vivado recognises as block RAM (UG901 templates), chosen at
+    // elaboration: equal port widths with byte-enable lanes, or asymmetric
+    // widths where the wide port moves RA/RB storage words per access (whole
+    // words only -- the asymmetric instances in MiSTer cores have one lane).
+    // Writes are never per bit: a per-bit loop turns the array into registers.
+    generate
+        if (RA == 1 && RB == 1) begin : sym
+            reg [W-1:0] mem [0:DEPTH-1];
+            always @(posedge clock0) begin
+                if (clocken0) begin
+                    for (l = 0; l < width_byteena_a; l = l + 1)
+                        if (wren_a && byteena_a[l]) mem[address_a][l*BEA +: BEA] <= data_a[l*BEA +: BEA];
+                    if (rden_a) ra <= mem[address_a];
+                end
+            end
+            always @(posedge clk_b) begin
+                if (en_b) begin
+                    for (l = 0; l < width_byteena_b; l = l + 1)
+                        if (BIDIR && wren_b && byteena_b[l]) mem[address_b][l*BEB +: BEB] <= data_b[l*BEB +: BEB];
+                    if (rden_b) rb <= mem[address_b];
+                end
+            end
+        end else begin : asym
+            // Asymmetric ports as R interleaved symmetric banks (UG901's other
+            // template, and the one Vivado 2026.1 accepts): the wide port hits every
+            // bank at one row, the narrow port picks bank = low address bits. Whole
+            // words only; the narrow read is muxed by a registered bank select.
+            localparam integer R    = (RA > RB) ? RA : RB;
+            localparam integer LR   = (R > 1) ? $clog2(R) : 1;
+            localparam integer ROWS = DEPTH / R;
+            localparam         WIDE_A = (RA > RB);
+            wire            wclk  = WIDE_A ? clock0   : clk_b;
+            wire            wen   = WIDE_A ? clocken0 : en_b;
+            wire            wwr   = WIDE_A ? (wren_a & byteena_a[0]) : (BIDIR & wren_b & byteena_b[0]);
+            wire            wrd   = WIDE_A ? rden_a   : rden_b;
+            wire [31:0]     waddr = WIDE_A ? address_a : address_b;
+            wire [R*W-1:0]  wdata = WIDE_A ? data_a   : data_b;
+            wire            nclk  = WIDE_A ? clk_b    : clock0;
+            wire            nen   = WIDE_A ? en_b     : clocken0;
+            wire            nwr   = WIDE_A ? (BIDIR & wren_b & byteena_b[0]) : (wren_a & byteena_a[0]);
+            wire            nrd   = WIDE_A ? rden_b   : rden_a;
+            wire [31:0]     naddr = WIDE_A ? address_b : address_a;
+            wire [W-1:0]    ndata = WIDE_A ? data_b   : data_a;
+            wire [LR-1:0]   nsel  = naddr[LR-1:0];
+            wire [31:0]     nrow  = naddr >> LR;
+            reg  [LR-1:0]   nsel_q = {LR{1'b0}};
+            wire [R*W-1:0]  wq;
+            wire [W-1:0]    nq [0:R-1];
+            genvar k;
+            for (k = 0; k < R; k = k + 1) begin : bank
+                reg [W-1:0] m [0:ROWS-1];
+                reg [W-1:0] qw = {W{1'b0}}, qn = {W{1'b0}};
+                always @(posedge wclk) if (wen) begin
+                    if (wwr) m[waddr] <= wdata[k*W +: W];
+                    if (wrd) qw <= m[waddr];
+                end
+                always @(posedge nclk) if (nen) begin
+                    if (nwr && nsel == k) m[nrow] <= ndata;
+                    if (nrd) qn <= m[nrow];
+                end
+                assign wq[k*W +: W] = qw;
+                assign nq[k] = qn;
+            end
+            always @(posedge nclk) if (nen && nrd) nsel_q <= nsel;
+            always @(*) begin
+                ra = WIDE_A ? wq : nq[nsel_q];
+                rb = WIDE_A ? nq[nsel_q] : wq;
             end
         end
-    end
-
-    always @(posedge clk_b) begin
-        if (en_b) begin
-            for (i = 0; i < RB; i = i + 1) begin
-                for (j = 0; j < W; j = j + 1)
-                    if (BIDIR && wren_b && byteena_b[(i*W + j) / BEB])
-                        mem[address_b*RB + i][j] <= data_b[i*W + j];
-                if (rden_b) rb[i*W +: W] <= mem[address_b*RB + i];
-            end
-        end
-    end
+    endgenerate
 
     reg [width_a-1:0] ra_q = {width_a{1'b0}};
     reg [width_b-1:0] rb_q = {width_b{1'b0}};

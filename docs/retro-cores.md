@@ -58,48 +58,71 @@ the honest answer for PS2; nothing here changes that.
 
 ## What it took to get the four cores through Vivado
 
-MiSTer cores are Quartus code. Three classes of thing stopped Vivado 2026.1
-cold, all fixed in the overlay without editing an upstream file:
+MiSTer cores are Quartus code. Every class of thing that stopped Vivado 2026.1
+was fixed in the overlay without editing an upstream file:
 
 - **Intel megafunctions.** `overlay/rtl/altera_compat/` supplies `altsyncram`,
   `altdpram`, `lpm_mult`, `lpm_divide`, `scfifo`, `dcfifo`, `altshift_taps`,
   `altera_mult_add`, `altddio_out` and a Series-7-named `ODDR` as plain
-  Verilog with the same names, parameters and ports, so the thin wrappers the
+  Verilog with the same names, parameters and ports, plus the `altera_mf` and
+  `lpm` component packages for VHDL `use` clauses, so the thin wrappers the
   Peip cores share (`dpram.vhd`, `SyncRamDualByteEnable.vhd`, `RamMLAB.vhd`,
-  `Shiftreg.vhd`, `cpu_mul.vhd`) synthesise unmodified. One semantic gap is
-  documented there (same-port read-during-write returns old data).
-- **Quartus-only Verilog.** `inout reg` ports (every `sdram.sv`), procedural
-  writes to ports and wires declared without `reg` (every top), and PSX's
-  ports arriving through `sys/emu_ports.vh`. `tools/patch-top.py` fixes the
-  declarations from the errors Vivado reports and writes MiSTeX-style patched
-  copies into the overlay.
+  `Shiftreg.vhd`) synthesise unmodified. One semantic gap is documented there
+  (same-port read-during-write returns old data).
+- **RAM that Vivado will not infer as block RAM.** Two shapes cost a day:
+  a per-bit write loop in the first `altsyncram` model, and Peip's own
+  `SyncRamDual.vhd` (one process writing a `signal` array from two ports).
+  Both came out as registers — the GBA's four 8 KB "smallram" instances were
+  65,544 flip-flops and 157k LUTs *each*, and the core reported 963k LUTs,
+  110 % of the die. `altsyncram` now writes per byte-enable lane with a
+  banked template for asymmetric widths, and `SyncRamDual` /
+  `SyncRamDualNotPow2` are replaced by the two-process shared-variable form.
+  The GBA then dropped to 37.8k LUTs. Read a fit that looks too big as a
+  RAM-inference failure first.
+- **Quartus-only Verilog and VHDL.** `inout reg` ports (every `sdram.sv`),
+  procedural writes to ports and wires declared without `reg` (every top),
+  PSX's ports arriving through `sys/emu_ports.vh`, `defparam` onto an instance
+  named like its module, unpacked-array `localparam`s, `do` as a net name in
+  SNES's `main.v` (so `.v` is read as Verilog-2001, not SystemVerilog),
+  `default` as a record field in GBA (so GBA's VHDL is read as VHDL-93 while
+  N64 needs VHDL-2008 to read its own out ports), and Quartus's habit of
+  folding `entity mem.X` into `work` (the Peip cores' VHDL is compiled into a
+  `mem` library). `tools/patch-top.py` fixes the declaration class from the
+  errors Vivado reports and writes MiSTeX-style patched copies into the
+  overlay; the rest is per-core yaml (`vhdl: 93`, `vhdl-library: mem`).
 - **XPM.** MiSTeX's SNES `dpram_dif.vhd` instantiates `xpm_memory_tdpram` in
-  write-first mode with `WRITE_PROTECT 0`, which Vivado 2026.1 refuses;
-  the overlay copy sets it to 1.
-- **PLLs.** Six MMCME4_ADV shims (`overlay/cores/*/rtl/pll*_0002-xilinxusp.v`),
-  generated from each Altera PLL's output table; the worst frequency error is
-  0.043 % (PSX), N64's is exact. The runtime-reconfigurable ones (SNES, PSX
-  pll2, N64 pll2) pass the DRP bus through but need an UltraScale+-aware
-  sequencer before any core retunes at runtime.
+  write-first mode with `WRITE_PROTECT 0`, which Vivado 2026.1 refuses; the
+  overlay copy sets it to 1.
+- **PLLs and their reconfiguration.** Six MMCME4_ADV shims
+  (`overlay/cores/*/rtl/pll*_0002-xilinxusp.v`) generated from each Altera
+  PLL's output table; worst frequency error 0.043 % (PSX), N64's exact. PSX
+  and N64 retune their PLLs at runtime through Altera's reconfig IP
+  (`pll_cfg`, `pll_cfg_small`); those are static stubs here, so PAL/NTSC and
+  turbo clock switching is not functional until an UltraScale+ DRP sequencer
+  replaces them. N64's `cpu_mul` (a 250-generic `altera_mult_add`) is
+  replaced by the 64×64 multiply it configures.
 
 `tools/core-fit.py <MiSTeX-ports> <core> <part>` resolves the source list the
 way MiSTeX does, applies the above, and synthesises `emu` out of context with
 `CLK_50M` constrained at 50 MHz, so the MMCM-derived clocks are timed at the
-core's real rates.
+core's real rates. `tools/patch-top.py` and `tools/fit-summary.py` go with it.
 
 ## Measured: out-of-context synthesis of `emu`
 
 | core | part | CLB LUTs | registers | BRAM tiles | URAM | DSPs | slowest clock (post-synth) | result | black boxes |
 |---|---|---|---|---|---|---|---|---|---|
-| GBA | xcu55n | — | — | — | — | — | — | FAILED | 0 |
-| N64 | xcu55n | — | — | — | — | — | — | FAILED | 0 |
-| PSX | xcu55n | — | — | — | — | — | — | FAILED | 0 |
+| GBA | xcu55n | 37786 (4.33 %) | 30785 (1.77 %) | 111.5 (8.30 %) | 0 (0.00 %) | 58 (0.97 %) | 100.6 MHz clock: WNS +4.79 ns (fmax ≈ 194 MHz) | clean | 0 |
+| GBA | xcvu33p | 37786 (8.59 %) | 30785 (3.50 %) | 111.5 (16.59 %) | 0 (0.00 %) | 58 (2.01 %) | 100.6 MHz clock: WNS +4.56 ns (fmax ≈ 186 MHz) | clean | 0 |
+| N64 | xcu55n | 46188 (5.30 %) | 24345 (1.40 %) | 85.5 (6.36 %) | 0 (0.00 %) | 63 (1.06 %) | 93.7 MHz clock: WNS +4.24 ns (fmax ≈ 156 MHz) | clean | 0 |
+| N64 | xcvu33p | 46188 (10.50 %) | 24345 (2.77 %) | 85.5 (12.72 %) | 0 (0.00 %) | 63 (2.19 %) | 93.7 MHz clock: WNS +5.47 ns (fmax ≈ 192 MHz) | clean | 0 |
+| PSX | xcu55n | 46109 (5.29 %) | 30596 (1.76 %) | 117 (8.71 %) | 0 (0.00 %) | 101 (1.70 %) | 67.7 MHz clock: WNS +6.20 ns (fmax ≈ 117 MHz) | clean | 0 |
+| PSX | xcvu33p | 46109 (10.49 %) | 30596 (3.48 %) | 117 (17.41 %) | 0 (0.00 %) | 101 (3.51 %) | 67.7 MHz clock: WNS +8.34 ns (fmax ≈ 156 MHz) | clean | 0 |
 | SNES | xcu55n | 13846 (1.59 %) | 10175 (0.58 %) | 20.5 (1.53 %) | 0 (0.00 %) | 23 (0.39 %) | 21.5 MHz clock: WNS +20.61 ns (fmax ≈ 39 MHz) | clean | 1 |
 | SNES | xcvu33p | 13846 (3.15 %) | 10175 (1.16 %) | 20.5 (3.05 %) | 0 (0.00 %) | 23 (0.80 %) | 21.5 MHz clock: WNS +19.50 ns (fmax ≈ 37 MHz) | clean | 1 |
 
-GBA, PSX and N64 rows marked FAILED are still being carried through the
-Quartus-to-Vivado port at the time of writing (each round removes one class of
-construct; the SNES needed three). The table is regenerated by
+All four consoles synthesise clean on both dies. Percentages are of the C1100
+(`xcu55n`, 871,680 LUTs) and the FK33 (`xcvu33p`, 439,680 LUTs); the FK33 rows
+are the same netlists at twice the share. The table is regenerated by
 `tools/fit-summary.py build`.
 
 Read these as *fit and post-synthesis timing*, not as a bitstream: place and

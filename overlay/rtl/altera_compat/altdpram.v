@@ -41,11 +41,11 @@ module altdpram #(
 );
     localparam integer BE = width / width_byteena;
     (* ram_style = "distributed" *) reg [width-1:0] mem [0:numwords-1];
-    integer j;
+    integer l;
     always @(posedge inclock)
         if (wren)
-            for (j = 0; j < width; j = j + 1)
-                if (byteena[j / BE]) mem[wraddress][j] <= data[j];
+            for (l = 0; l < width_byteena; l = l + 1)
+                if (byteena[l]) mem[wraddress][l*BE +: BE] <= data[l*BE +: BE];
     wire [width-1:0] rd = mem[rdaddress];
     reg  [width-1:0] rd_q = {width{1'b0}};
     always @(posedge outclock) rd_q <= rd;

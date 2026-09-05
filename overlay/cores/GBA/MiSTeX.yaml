@@ -24,10 +24,14 @@ sourcedirs:
 
 quartus:
   sourcefiles:
+    - upstream/rtl/SyncRamDual.vhd
+    - upstream/rtl/SyncRamDualNotPow2.vhd
     - upstream/rtl/sdram.sv
     - upstream/rtl/pll/pll_0002.v
 
 vivado:
   sourcefiles:
+    - rtl/SyncRamDual.vhd
+    - rtl/SyncRamDualNotPow2.vhd
     - rtl/sdram.sv
     - rtl/pll_0002-xilinxusp.v
