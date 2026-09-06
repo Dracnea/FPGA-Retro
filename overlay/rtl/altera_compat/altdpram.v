@@ -40,7 +40,12 @@ module altdpram #(
     output wire [width-1:0]         q
 );
     localparam integer BE = width / width_byteena;
-    (* ram_style = "distributed" *) reg [width-1:0] mem [0:numwords-1];
+    // Intel's VHDL component declares numwords with a default of 0 meaning
+    // "2**widthad"; that 0 overrides the parameter default above when the
+    // model is bound from VHDL, and a [0:-1] array drops every write (found
+    // in simulation: the PSX CPU's register file read X for every register).
+    localparam integer NW = (numwords > 0) ? numwords : (1 << widthad);
+    (* ram_style = "distributed" *) reg [width-1:0] mem [0:NW-1];
     integer l;
     always @(posedge inclock)
         if (wren)

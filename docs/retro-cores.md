@@ -74,6 +74,11 @@ on the host GPU remains the honest answer; nothing here changes that.
 [ps2-hardware-study.md](ps2-hardware-study.md) (2026-09-06) has the
 board, chip and documentation survey behind this paragraph, a block-by-block
 sizing scaled from the PSX fit, and the order a recreation would be built in.
+The first block of that order — the IOP, which *is* PSX RTL with a new
+address map — has been built: it boots a test ROM in xsim, fits both dies
+(12.5k LUTs, 192 URAM) and has a C1100 bitstream target;
+[ps2-iop-bringup.md](ps2-iop-bringup.md). The verdict on the EE and GS is
+unchanged.
 
 **GameCube:** the same, one generation later and further out of reach. No
 GameCube core exists for any FPGA (the only hits are a hobby PowerPC soft

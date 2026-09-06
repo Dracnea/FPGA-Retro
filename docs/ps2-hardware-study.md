@@ -1,7 +1,9 @@
 # PlayStation 2 hardware study: what is documented, what exists in HDL, and what a C1100/FK33 recreation would take
 
 Written 2026-09-06 as the follow-up to the PS2 paragraph in
-[retro-cores.md](retro-cores.md). That paragraph said "nothing to port, and
+[retro-cores.md](retro-cores.md). **Status:** step 1 of §7 has since been
+started — the IOP subsystem simulates through a boot test, fits both dies
+and has a C1100 bitstream; see [ps2-iop-bringup.md](ps2-iop-bringup.md). That paragraph said "nothing to port, and
 clock". This document is the evidence behind it, gathered the way the PSX port
 was approached: board, chips, buses, memories, then the RTL that exists and
 the RTL that would have to be written. Numbers are from the sources named; the

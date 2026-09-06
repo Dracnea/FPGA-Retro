@@ -29,6 +29,13 @@ BSD-2-Clause like the rest of this repo.
   supported here — MiSTeX converts MIF files and feeds them to its own
   `spram`/`dpram` replacements instead.
 - `altdpram` — the MLAB / LUT-RAM form: registered write, asynchronous read.
+- **`numwords` / `numwords_a` / `numwords_b` = 0 means `2**widthad`.** Intel's
+  VHDL component declarations default them to 0 with that meaning, and when a
+  model is bound from a VHDL wrapper the 0 overrides the Verilog parameter
+  default. Before this was handled (2026-09-06) `altdpram` sized its array
+  `[0:-1]` under xsim and dropped every write — the PSX CPU's register file
+  read X for every register. Synthesis was not affected. Any wrapper that
+  passes `numwords` explicitly (PSX's `dpram.vhd` does) never saw it.
 - `lpm_mult`, `lpm_divide` — signed/unsigned per Intel's representation
   parameters, `lpm_pipeline` output register stages (a plain register chain;
   no retiming is implied, so a 16-bit divider with `lpm_pipeline = 6` is one

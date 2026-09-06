@@ -79,7 +79,11 @@ module altsyncram #(
     localparam integer W     = (width_a < width_b) ? width_a : width_b;
     localparam integer RA    = width_a / W;
     localparam integer RB    = width_b / W;
-    localparam integer DEPTH = (numwords_a * RA > numwords_b * RB) ? numwords_a * RA : numwords_b * RB;
+    // numwords_* of 0 means 2**widthad_* (Intel's VHDL component default; it
+    // overrides the parameter defaults above when bound from VHDL -- see altdpram.v)
+    localparam integer NWA   = (numwords_a > 0) ? numwords_a : (1 << widthad_a);
+    localparam integer NWB   = (numwords_b > 0) ? numwords_b : (1 << widthad_b);
+    localparam integer DEPTH = (NWA * RA > NWB * RB) ? NWA * RA : NWB * RB;
     localparam integer BEA   = width_a / width_byteena_a;   // data bits per byte-enable lane
     localparam integer BEB   = width_b / width_byteena_b;
     localparam         BIDIR = (operation_mode == "BIDIR_DUAL_PORT");

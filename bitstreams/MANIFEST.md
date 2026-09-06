@@ -8,6 +8,8 @@ seat. **The md5 is the identity, not the filename** — record it and check it.
 | `c1100_pcie_video_transport.bit` | `496aca5739e08b33e44b763ee8eeba8e` | xcu55n-fsvh2892-2LV-e | `overlay/mistex_boards/c1100_pcie_video.py` — LitePCIe gen3 x4 endpoint, DMA with scatter-gather, `(frame << 24) \| pixel_index` frame source, `hbm_cattrip` low | **On hardware 2026-09-05:** enumerates as `10ee:9034`, BAR0 128 KiB, link trained 8.0 GT/s × 4, MSI bound, `litepcie` driver attached. Timing-clean at build: WNS +0.721 ns. DMA integrity test written (`tools/frametest`), not yet run (needs root on `/dev/litepcie0`). |
 | `fk33_platform_smoke.bit` | `e2a0fd0745c7c516bfc650d6d69ee740` | xcvu33p-fsvh2104-2-e | `overlay/mistex_boards/sqrl_fk33_mistex.py smoke` — CRG from the 200 MHz oscillator plus a kept counter on the LEDs | Builds and closes timing; **no FK33 is attached to this host**, so unverified on silicon. |
 
+| `c1100_ps2_iop.bit` | `6fab44411aa52d957b86e0790d04cb40` | xcu55n-fsvh2892-2LV-e | `overlay/mistex_boards/c1100_ps2_iop.py` — the same PCIe endpoint plus the PS2 IOP subsystem (`overlay/cores/PS2`) on CSRs; its `csr.csv` is `c1100_ps2_iop.csr.csv` here, which `tools/ps2iop/iop_post.py` needs | Builds and closes timing: WNS +0.449 ns, 126,287 endpoints, 0 failing; 17,035 LUTs, 45 BRAM, 192 URAM. **Not loaded** — the card was busy on 2026-09-06. Procedure and expected output: `docs/ps2-iop-bringup.md`. |
+
 Loading the C1100 image: JTAG (`program_hw_devices` from Vivado, or `fjtag
 --load`), then `sudo tools/pcie-bringup.sh` to drop the stale PCIe identity and
 rescan. A card that held a bitstream with no PCIe endpoint needs that rescan (or
