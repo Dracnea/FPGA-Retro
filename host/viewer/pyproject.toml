@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retroview"
+version = "0.1.0"
+description = "Window on the frames an FPGA-Retro card streams to host RAM (FRM1 over PCIe DMA)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "BSD-2-Clause"}
+dependencies = ["pygame>=2.5"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+retroview = "retroview.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["retroview*"]

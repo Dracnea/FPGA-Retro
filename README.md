@@ -37,10 +37,10 @@ functions over PCIe plus retargeting the SPI transport.
 | stage | status |
 |---|---|
 | Retro core (NES) | blocked on the video sink below; MMCME4 PLL shim done |
-| FPGA framebuffer | synthetic test pattern standing in, DMA-verifiable word-for-word |
+| FPGA framebuffer | **`rtl/video_sink` streams a core's VGA output as FRM1 frames into the DMA, simulated word-for-word**; no framebuffer needed — [docs/host-video-path.md](docs/host-video-path.md) |
 | **PCIe → host RAM** | **built, timing-clean, loaded on hardware** — see [docs/c1100-pcie-transport.md](docs/c1100-pcie-transport.md) |
 | Host software | **`hps_pcie` bridge built and simulated against `hps_io.sv`; `Main_MiSTeX` builds natively on x86-64 with a PCIe backend** (`host/main_mistex_pcie`); `shmem_*` still stubbed — see [docs/host-gui-compatibility.md](docs/host-gui-compatibility.md) |
-| GPU → HDMI/DP | host-side, not started |
+| GPU → HDMI/DP | **`host/viewer` (`retroview`, pygame) shows the stream on the host GPU**; verified headless, waits for a card load |
 
 The headline number from the PCIe build: the endpoint, DMA engine,
 scatter-gather and frame source together cost **0.53% of the device's LUTs and
@@ -55,9 +55,10 @@ overlay/            drop-in overlay for a MiSTeX-ports checkout; paths mirror it
   mistex_boards/    board targets and the standalone PCIe transport build
   cores/NES/rtl/    UltraScale+ PLL shim, selected by MiSTeX.yaml, no core edits
   rtl/hps_pcie/     the HPS side of hps_io as PCIe registers, with its xsim bench
+  rtl/video_sink/   core VGA output -> FRM1 stream for the PCIe DMA, with its xsim bench
   cores/PS2/        the PS2 I/O processor subsystem (simulated, fitted, C1100 bitstream)
 docs/               architecture and verified build results
-host/               Main_MiSTeX x86-64 port (files + patch against MiSTeX-devel's repo)
+host/               Main_MiSTeX x86-64 port (files + patch against MiSTeX-devel's repo); retroview, the frame viewer
 tools/              install-overlay.sh, pcie-bringup.sh, ps2iop/ (IOP bring-up over PCIe)
 ```
 

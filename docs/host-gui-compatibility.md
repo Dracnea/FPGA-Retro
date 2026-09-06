@@ -112,10 +112,9 @@ In the order they block:
    card, which is busy with other work. Expected: Main prints
    `got: 'HPSTEST;;O1,...'` from `user_io_read_confstr`, the menu logic runs,
    and `hpstest_status_lo` on the card changes when an option is toggled.
-2. **The video sink and a host viewer.** `VGA_*` → framebuffer → the
-   existing DMA → a host window (SDL or similar). The OSD is in that picture,
-   so the menu becomes visible only here. `retro-cores.md` item 2 and the
-   README's "GPU → HDMI/DP" row.
+2. ~~The video sink and a host viewer.~~ **Done later the same day**, short
+   of the card load: [host-video-path.md](host-video-path.md). The OSD is in
+   that picture, so the menu becomes visible once `sys_top` is in the build.
 3. **The memory bridge.** Per-core `sdram.sv` replacement on URAM/HBM and
    the `DDRAM_*` → HBM bridge. `retro-cores.md` item 1.
 4. **A board target that instantiates `sys_top.v`** with the bridge in place

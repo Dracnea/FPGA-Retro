@@ -1,0 +1,1 @@
+xsim {sink} -autoloadwcfg -runall
