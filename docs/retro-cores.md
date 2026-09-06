@@ -71,6 +71,9 @@ not the one it is on a DE10-Nano:
 
 So the PS2 fails on "nothing to port" and on clock, not on fabric size. PCSX2
 on the host GPU remains the honest answer; nothing here changes that.
+[ps2-hardware-study.md](ps2-hardware-study.md) (2026-09-06) has the
+board, chip and documentation survey behind this paragraph, a block-by-block
+sizing scaled from the PSX fit, and the order a recreation would be built in.
 
 **GameCube:** the same, one generation later and further out of reach. No
 GameCube core exists for any FPGA (the only hits are a hobby PowerPC soft
