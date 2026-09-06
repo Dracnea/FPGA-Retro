@@ -1,12 +1,14 @@
-# PS2 — I/O processor subsystem, stage 1a
+# PS2 — I/O processor subsystem, stage 1
 
 The first buildable piece of a PlayStation 2 on these cards, in the order
 [docs/ps2-hardware-study.md](../../../docs/ps2-hardware-study.md) §7 lays out:
 the IOP first, because it is the one block for which RTL already exists. The
 PS2's I/O processor is the PS1's CPU (an R3000A at 36.864 MHz) with a
 different address map, 2 MB of RAM, a 4 MB ROM, 32 interrupt sources and
-three more timers. All of that is here; everything else on the IOP bus is a
-register stub.
+three more timers. All of that is here, plus (2026-09-06, second pass) the
+SPU2 as two PSX SPU cores with on-chip work RAM, SIO2 with a digital pad on
+port 0, and the CDVD register block with no disc. DMA, SIF and the second
+SSBUS config block are register stubs.
 
 Results and the bring-up procedure are in
 [docs/ps2-iop-bringup.md](../../../docs/ps2-iop-bringup.md). Nothing in this
@@ -21,13 +23,19 @@ directory has run on hardware yet.
 | `iop_ram.vhd` | 2 MB RAM + 4 MB ROM as 128-bit-row UltraRAM behind the PSX SDRAM-controller protocol, with the instruction-cache line fill | new |
 | `iop_intc.vhd` | I_STAT / I_MASK / I_CTRL, 32 sources, PS2SDK bit numbering | new |
 | `iop_timer32.vhd` | timers 3-5 (32-bit) at 0x1F801480, modelled on the PSX `timer.vhd` | new |
+| `iop_spu2.vhd` | two PSX SPU cores at 0x1F900000 / 0x1F900400 with the 32-bit bus split into the 16-bit halfword each register wants; IRQs to INTC bit 9. **PSX register layout**, not the SPU2's — see the file header | new (cores: PSX_MiSTer `spu.vhd`, `spu_ram.vhd`, `spu_gauss.vhd`) |
+| `iop_spuram.vhd` | 512 KB of SPU work RAM per core as 128-bit-row UltraRAM behind `spu_ram`'s SDRAM-style port | new |
+| `iop_sio2.vhd` | SIO2 at 0x1F808200: SEND1/2/3, FIFOs, CTRL, RECV1-3, I_STAT, INTC bit 17; a PS1-protocol digital pad answers on port 0 from the `pad0_buttons` port, everything else reads as absent | new |
+| `iop_cdvd.vhd` | CDVD at 0x1F402000: N/S command ports, status, error, I_STAT, INTC bit 2; answers the boot-time S commands with PCSX2's values and reports no disc | new |
 | `iop_regstub.vhd` | a read-back register file standing in for a peripheral that does not exist yet | new |
 | (unmodified) `cpu.vhd`, `memctrl.vhd`, `timer.vhd`, `datacache.vhd`, `divider.vhd`, the RAM/FIFO wrappers | PSX_MiSTer, GPL-2.0, Robert Peip | via `cores/PSX/upstream` |
 
 **Stubs** (programmed and read back, no behaviour): DMA (0x1F801080 and
-0x1F801500), SSBUS config 2 (0x1F801400), SIF (0x1D000000), CDVD
-(0x1F402000), SIO2 (0x1F808200), SPU2 (0x1F900000). Not present at all: SPU
-(the PS1 one), pads/SIO, GPU, MDEC, CD-ROM; reads there return zero.
+0x1F801500), SSBUS config 2 (0x1F801400), SIF (0x1D000000). Not present at
+all: the PS1's SPU window, pads/SIO, GPU, MDEC, CD-ROM; reads there return
+zero. What the three new blocks do *not* do: SPU2 has the PS1 register map
+and no DMA; SIO2 has no memory cards, multitap or DMA channels 11/12; CDVD
+has no sector path (every read command returns error 0x12, no disc).
 
 Address map differences from the PSX that are implemented: 4 MB BIOS window
 at 0x1FC00000; the expansion-1 window narrowed to 0x1F000000-0x1F3FFFFF so
@@ -43,7 +51,11 @@ cd sim && ./run_sim.sh            # assemble boot_test.s, build in xsim, run, gr
 `boot_test.s` runs from the reset vector and reports through the POST register
 at 0x1F802070: 01 alive, 02 RAM word test, 03 byte/halfword access, 04 code
 copied to RAM and run cached, 05 timer 3 polled, 06 timer 3 interrupt through
-the BEV vector (the handler writes 5A), AA all passed, EE a check failed. It
+the BEV vector (the handler writes 5A), 07 SPU2 voice registers on both
+cores, 08 SPU2 transfer FIFO into work RAM (the bench checks the RAM row),
+09 SIO2 pad poll (FF 41 5A + the buttons the bench drives, RECV1, I_STAT,
+INTC bit 17), 0A CDVD (no disc, S command 03/00, N command 00, INTC bit 2),
+AA all passed, EE a check failed. It
 is assembled by `asm_r3000.py`, a two-pass MIPS I assembler with no
 dependencies, so the test needs no cross toolchain.
 
@@ -51,8 +63,9 @@ dependencies, so the test needs no cross toolchain.
 RAM and peripheral-bus transaction and takes plusargs through `XSIM_ARGS`:
 `cycles=N`, `quiet=1` (hide instruction fetches), `regs=1 rfrom=A rto=B`
 (register-file trace), `rf=1` (the register-file model's own view), `pfrom=A
-pto=B` (every non-sequential PC change with SR/CAUSE/EPC). Each of the four
-bugs below was found with one of those.
+pto=B` (every non-sequential PC change with SR/CAUSE/EPC), `tfrom=N` (start
+the transaction trace late), `spu=1` (SPU core 0's FIFO and work-RAM port).
+Each of the bugs below was found with one of those.
 
 ## Fit and build
 
@@ -95,10 +108,23 @@ the RTL or recorded in the file it belongs to:
 5. **The test itself cleared BEV.** Writing SR = IM2 | IEc sent the interrupt
    to 0x80000080 in RAM, which executed zeros up to the copied test routine
    and "returned" into stage 4 forever. The ROM now keeps BEV set.
+6. **Stores arrive word-aligned.** The PSX CPU aligns store addresses and
+   puts the lanes in the write mask, so a `sh` to 0x1F900006 reaches the bus
+   as address ...004, mask 1100, data in bits 31:16; loads keep their byte
+   address. The mux now exports the write mask on the SPU2, SIO2 and CDVD
+   buses and those blocks pick the halfword/byte from it (second pass).
+7. **Peripheral read data is sampled one cycle after the strobe.** A block
+   that registers its bus_dataRead at the strobe is on time; re-registering
+   the SPU's already-registered output made every SPU2 read return zero.
+8. **xsim cannot read a VHDL array element from a SystemVerilog bench.** It
+   warns and then returns junk, which made a correct SPU RAM transfer look
+   like a failure; `iop_spuram` mirrors the checked row into a scalar signal
+   under `synthesis translate_off` for the bench.
 
 ## Next
 
-In the order the hardware study gives: SIO2 (pads, memory cards) and the
-PS1 SPU as two instances toward an SPU2, both existing PSX RTL; a host-fed
-CDVD; then the Graphics Synthesizer as a standalone unit fed over PCIe, which
-is the first block with no RTL to start from.
+Still on the IOP: an SPU2 register decode in front of the two PSX cores
+(and 2 MB shared RAM), the IOP DMAC (SPU2, SIO2, CDVD and SIF all move their
+data by DMA on the real console), memory cards on SIO2, and the SIF. After
+that the study's step 2: the Graphics Synthesizer as a standalone unit fed
+over PCIe, the first block with no RTL to start from.

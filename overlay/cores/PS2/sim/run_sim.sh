@@ -30,8 +30,11 @@ xvhdl -2008 --work mem \
   "$UP/SyncRam.vhd" "$OVL/cores/PSX/rtl/SyncRamDual.vhd" "$OVL/cores/PSX/rtl/SyncRamDualNotPow2.vhd" \
   "$UP/SyncRamDualByteEnable.vhd" "$UP/dpram.vhd" "$UP/export.vhd" "$UP/divider.vhd" "$UP/datacache.vhd" \
   "$UP/cpu.vhd" "$UP/timer.vhd" "$UP/memctrl.vhd" \
+  "$UP/spu_gauss.vhd" "$UP/spu_ram.vhd" "$UP/spu.vhd" \
   "$CORE/rtl/iop/iop_regstub.vhd" "$CORE/rtl/iop/iop_intc.vhd" "$CORE/rtl/iop/iop_timer32.vhd" \
-  "$CORE/rtl/iop/iop_ram.vhd" "$CORE/rtl/iop/iop_memorymux.vhd" "$CORE/rtl/iop/iop_top.vhd" \
+  "$CORE/rtl/iop/iop_ram.vhd" "$CORE/rtl/iop/iop_spuram.vhd" "$CORE/rtl/iop/iop_spu2.vhd" \
+  "$CORE/rtl/iop/iop_sio2.vhd" "$CORE/rtl/iop/iop_cdvd.vhd" \
+  "$CORE/rtl/iop/iop_memorymux.vhd" "$CORE/rtl/iop/iop_top.vhd" \
   > xvhdl.log 2>&1 || { grep -E "ERROR" xvhdl.log | head -20; exit 1; }
 xvlog -sv --work mem "$HERE/$TB.sv" > xvlog.log 2>&1 || { tail -20 xvlog.log; exit 1; }
 xelab -debug off --relax -L mem -L altera_mf -s iop mem.$TB > xelab.log 2>&1 || { grep -E "ERROR" xelab.log | head -20; exit 1; }

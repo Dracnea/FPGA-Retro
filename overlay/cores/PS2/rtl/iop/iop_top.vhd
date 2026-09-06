@@ -1,7 +1,9 @@
--- iop_top.vhd -- the PS2 I/O processor subsystem, stage 1a: CPU, memory mux,
--- on-chip RAM/ROM, SSBUS config, interrupt controller, the six timers and the
--- POST register.  Everything else on the IOP bus is a register stub
--- (iop_regstub) so boot code can program it without hanging; see README.md.
+-- iop_top.vhd -- the PS2 I/O processor subsystem, stage 1: CPU, memory mux,
+-- on-chip RAM/ROM, SSBUS config, interrupt controller, the six timers, the
+-- POST register, the SPU2 (two PSX SPU cores), SIO2 with a digital pad, and
+-- the CDVD register block with no disc.  Everything else on the IOP bus (DMA,
+-- SIF, SSBUS config 2) is a register stub (iop_regstub) so boot code can
+-- program it without hanging; see README.md.
 --
 -- Reused from PSX_MiSTer (GPL-2.0, Robert Peip), unmodified: cpu (the R3000A
 -- with its instruction cache, the IOP is the same CPU), memctrl (SSBUS
@@ -30,8 +32,10 @@ entity iop_top is
       -- video timing from the GS side (vblank feeds INTC bits 0/11 and timer 1; hblank feeds timers 0/3)
       hblank     : in  std_logic;
       vblank     : in  std_logic;
-      -- external interrupt sources OR'ed into the INTC (SBUS, SIF, CDVD, ... when they exist)
+      -- external interrupt sources OR'ed into the INTC (SBUS, SIF, ... when they exist)
       ext_irq    : in  std_logic_vector(31 downto 0);
+      -- digital pad on SIO2 port 0, active low, PS1 bit order (the host feeds this)
+      pad0_buttons : in std_logic_vector(15 downto 0);
       -- ROM load port (word addressed, 4 MB)
       rom_wr     : in  std_logic;
       rom_addr   : in  std_logic_vector(19 downto 0);
@@ -39,6 +43,11 @@ entity iop_top is
       -- POST register (0x1F802070): what the boot code says about its progress
       post_code  : out std_logic_vector(7 downto 0) := (others => '0');
       post_wr    : out std_logic := '0';
+      -- SPU2 audio (core 0 and core 1, signed 16-bit)
+      spu_l0     : out std_logic_vector(15 downto 0);
+      spu_r0     : out std_logic_vector(15 downto 0);
+      spu_l1     : out std_logic_vector(15 downto 0);
+      spu_r1     : out std_logic_vector(15 downto 0);
       -- diagnostics
       cpu_error  : out std_logic;
       mem_idle   : out std_logic
@@ -122,10 +131,11 @@ architecture arch of iop_top is
    signal bus_sif_read, bus_sif_write : std_logic;
    signal bus_sif_dataRead  : std_logic_vector(31 downto 0);
    signal bus_cdvd_addr     : unsigned(5 downto 0);
+   signal bus_cdvd_writeMask, bus_sio2_writeMask, bus_spu2_writeMask : std_logic_vector(3 downto 0);
    signal bus_cdvd_dataWrite: std_logic_vector(31 downto 0);
    signal bus_cdvd_read, bus_cdvd_write : std_logic;
    signal bus_cdvd_dataRead : std_logic_vector(31 downto 0);
-   signal bus_sio2_addr     : unsigned(6 downto 0);
+   signal bus_sio2_addr     : unsigned(7 downto 0);
    signal bus_sio2_dataWrite: std_logic_vector(31 downto 0);
    signal bus_sio2_read, bus_sio2_write : std_logic;
    signal bus_sio2_dataRead : std_logic_vector(31 downto 0);
@@ -143,6 +153,14 @@ architecture arch of iop_top is
    signal irq_local         : std_logic_vector(31 downto 0);
    signal irqTimer0, irqTimer1, irqTimer2, irqTimer3, irqTimer4, irqTimer5 : std_logic;
    signal post_reg          : std_logic_vector(7 downto 0) := (others => '0');
+
+   -- clock phase index for the SPU (psx_top's clk2xIndex: '1' on the clk2x
+   -- edge that coincides with a clk1x edge)
+   signal clk1xToggle       : std_logic := '0';
+   signal clk1xToggle2x     : std_logic := '0';
+   signal clk2xIndex        : std_logic := '0';
+   signal irq_spu           : std_logic_vector(1 downto 0);
+   signal irq_sio2, irq_cdvd : std_logic;
 
    -- reset sequencing (see below)
    signal reset_int         : std_logic := '1';
@@ -364,16 +382,19 @@ begin
       bus_sif_write        => bus_sif_write,
       bus_sif_dataRead     => bus_sif_dataRead,
       bus_cdvd_addr        => bus_cdvd_addr,
+      bus_cdvd_writeMask   => bus_cdvd_writeMask,
       bus_cdvd_dataWrite   => bus_cdvd_dataWrite,
       bus_cdvd_read        => bus_cdvd_read,
       bus_cdvd_write       => bus_cdvd_write,
       bus_cdvd_dataRead    => bus_cdvd_dataRead,
       bus_sio2_addr        => bus_sio2_addr,
+      bus_sio2_writeMask   => bus_sio2_writeMask,
       bus_sio2_dataWrite   => bus_sio2_dataWrite,
       bus_sio2_read        => bus_sio2_read,
       bus_sio2_write       => bus_sio2_write,
       bus_sio2_dataRead    => bus_sio2_dataRead,
       bus_spu2_addr        => bus_spu2_addr,
+      bus_spu2_writeMask   => bus_spu2_writeMask,
       bus_spu2_dataWrite   => bus_spu2_dataWrite,
       bus_spu2_read        => bus_spu2_read,
       bus_spu2_write       => bus_spu2_write,
@@ -508,11 +529,32 @@ begin
       bus_dataRead  => bus_tmr2_dataRead
    );
 
+   -- clock phase index, as psx_top generates it
+   process (clk1x)
+   begin
+      if rising_edge(clk1x) then
+         clk1xToggle <= not clk1xToggle;
+      end if;
+   end process;
+   process (clk2x)
+   begin
+      if rising_edge(clk2x) then
+         clk1xToggle2x <= clk1xToggle;
+         clk2xIndex    <= '0';
+         if (clk1xToggle2x = clk1xToggle) then
+            clk2xIndex <= '1';
+         end if;
+      end if;
+   end process;
+
    -- interrupt sources, PS2SDK intrman numbering
-   process (vblank, irqTimer0, irqTimer1, irqTimer2, irqTimer3, irqTimer4, irqTimer5)
+   process (vblank, irqTimer0, irqTimer1, irqTimer2, irqTimer3, irqTimer4, irqTimer5, irq_spu, irq_sio2, irq_cdvd)
    begin
       irq_local     <= (others => '0');
       irq_local(0)  <= vblank;
+      irq_local(2)  <= irq_cdvd;
+      irq_local(9)  <= irq_spu(0) or irq_spu(1);
+      irq_local(17) <= irq_sio2;
       irq_local(4)  <= irqTimer0;
       irq_local(5)  <= irqTimer1;
       irq_local(6)  <= irqTimer2;
@@ -543,9 +585,59 @@ begin
    idma2 : entity work.iop_regstub generic map (ADDR_BITS => 7)  port map (clk1x, reset_int, bus_dma2_addr, bus_dma2_dataWrite, bus_dma2_read, bus_dma2_write, bus_dma2_dataRead);
    issb2 : entity work.iop_regstub generic map (ADDR_BITS => 7)  port map (clk1x, reset_int, bus_ssb2_addr, bus_ssb2_dataWrite, bus_ssb2_read, bus_ssb2_write, bus_ssb2_dataRead);
    isif  : entity work.iop_regstub generic map (ADDR_BITS => 7)  port map (clk1x, reset_int, bus_sif_addr,  bus_sif_dataWrite,  bus_sif_read,  bus_sif_write,  bus_sif_dataRead);
-   icdvd : entity work.iop_regstub generic map (ADDR_BITS => 6)  port map (clk1x, reset_int, bus_cdvd_addr, bus_cdvd_dataWrite, bus_cdvd_read, bus_cdvd_write, bus_cdvd_dataRead);
-   isio2 : entity work.iop_regstub generic map (ADDR_BITS => 7)  port map (clk1x, reset_int, bus_sio2_addr, bus_sio2_dataWrite, bus_sio2_read, bus_sio2_write, bus_sio2_dataRead);
-   ispu2 : entity work.iop_regstub generic map (ADDR_BITS => 11) port map (clk1x, reset_int, bus_spu2_addr, bus_spu2_dataWrite, bus_spu2_read, bus_spu2_write, bus_spu2_dataRead);
+
+   -- CDVD register block, no disc (see iop_cdvd.vhd)
+   icdvd : entity work.iop_cdvd
+   port map
+   (
+      clk1x         => clk1x,
+      reset         => reset_int,
+      bus_addr      => bus_cdvd_addr,
+      bus_writeMask => bus_cdvd_writeMask,
+      bus_dataWrite => bus_cdvd_dataWrite,
+      bus_read      => bus_cdvd_read,
+      bus_write     => bus_cdvd_write,
+      bus_dataRead  => bus_cdvd_dataRead,
+      irq           => irq_cdvd
+   );
+
+   -- SIO2 with a digital pad on port 0 (see iop_sio2.vhd)
+   isio2 : entity work.iop_sio2
+   port map
+   (
+      clk1x         => clk1x,
+      reset         => reset_int,
+      pad0_buttons  => pad0_buttons,
+      bus_addr      => bus_sio2_addr,
+      bus_writeMask => bus_sio2_writeMask,
+      bus_dataWrite => bus_sio2_dataWrite,
+      bus_read      => bus_sio2_read,
+      bus_write     => bus_sio2_write,
+      bus_dataRead  => bus_sio2_dataRead,
+      irq           => irq_sio2
+   );
+
+   -- SPU2: two PSX SPU cores with 512 KB each (see iop_spu2.vhd for what is
+   -- and is not SPU2-accurate about this)
+   ispu2 : entity work.iop_spu2
+   port map
+   (
+      clk1x         => clk1x,
+      clk2x         => clk2x,
+      clk2xIndex    => clk2xIndex,
+      reset         => reset_int,
+      bus_addr      => bus_spu2_addr,
+      bus_writeMask => bus_spu2_writeMask,
+      bus_dataWrite => bus_spu2_dataWrite,
+      bus_read      => bus_spu2_read,
+      bus_write     => bus_spu2_write,
+      bus_dataRead  => bus_spu2_dataRead,
+      irq           => irq_spu,
+      sound_l0      => spu_l0,
+      sound_r0      => spu_r0,
+      sound_l1      => spu_l1,
+      sound_r1      => spu_r1
+   );
 
    -- POST register at 0x1F802070 on the 8-bit expansion-2 bus
    bus_exp2_dataRead <= post_reg when (bus_exp2_addr = to_unsigned(16#70#, 13)) else x"00";

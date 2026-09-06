@@ -27,4 +27,4 @@ overlay/cores/PS2/sim/work/
 overlay/cores/PS2/sim/work_dbg/
 overlay/cores/PS2/sim/run_sim*.out
 overlay/cores/PS2/sim/*.hex
-overlay/cores/PS2/fit/run_fit.out
+overlay/cores/PS2/fit/run_fit*.out

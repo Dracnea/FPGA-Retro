@@ -80,6 +80,9 @@ def add_iop_sources(platform, root=PORTS_ROOT):
         join(up, "memctrl.vhd"),
         join(core, "rtl", "iop", "iop_regstub.vhd"), join(core, "rtl", "iop", "iop_intc.vhd"),
         join(core, "rtl", "iop", "iop_timer32.vhd"), join(core, "rtl", "iop", "iop_ram.vhd"),
+        join(up, "spu.vhd"), join(up, "spu_ram.vhd"), join(up, "spu_gauss.vhd"),
+        join(core, "rtl", "iop", "iop_spuram.vhd"), join(core, "rtl", "iop", "iop_spu2.vhd"),
+        join(core, "rtl", "iop", "iop_sio2.vhd"), join(core, "rtl", "iop", "iop_cdvd.vhd"),
         join(core, "rtl", "iop", "iop_memorymux.vhd"), join(core, "rtl", "iop", "iop_top.vhd"),
     ]
     for f in vhdl:
@@ -211,10 +214,14 @@ class IOPBringup(LiteXModule, AutoCSR):
         ])
         self.post_count = CSRStatus(32, description="POST writes since the IOP left reset")
         self.rom_count  = CSRStatus(32, description="rom_data writes since power-up")
+        self.pad0       = CSRStorage(16, reset=0xFFFF, description="digital pad on SIO2 port 0: PS1 bit order, active low (0xFFFF = nothing pressed)")
 
         # --- sys -> iop -------------------------------------------------------
         reset_iop = Signal()
         self.specials += MultiReg(self.reset.storage, reset_iop, "iop")
+        pad0_iop = Signal(16)
+        self.specials += MultiReg(self.pad0.storage, pad0_iop, "iop")
+        spu_out = [Signal(16, name=f"spu_{n}") for n in ("l0", "r0", "l1", "r1")]   # no audio sink yet
 
         self.rom_wr_sync   = rom_wr_sync   = PulseSynchronizer("sys", "iop")
         self.rom_addr_sync = rom_addr_sync = PulseSynchronizer("sys", "iop")
@@ -289,6 +296,8 @@ class IOPBringup(LiteXModule, AutoCSR):
             i_hblank    = hblank,
             i_vblank    = vblank,
             i_ext_irq   = Constant(0, 32),
+            i_pad0_buttons = pad0_iop,
+            o_spu_l0 = spu_out[0], o_spu_r0 = spu_out[1], o_spu_l1 = spu_out[2], o_spu_r1 = spu_out[3],
             i_rom_wr    = rom_wr,
             i_rom_addr  = rom_ptr,
             i_rom_data  = rom_word,

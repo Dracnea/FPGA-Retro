@@ -1,0 +1,36 @@
+diff --git a/fpga_io.cpp b/fpga_io.cpp
+index 4e91e19..dd01119 100644
+--- a/fpga_io.cpp
++++ b/fpga_io.cpp
+@@ -1,3 +1,6 @@
++// The LitePCIe transport (FPGA-Retro, UltraScale+ cards) lives in fpga_io_pcie.cpp
++// and is selected with -DPCIE_HOST; this file is the SPI + GPIO one.
++#ifndef PCIE_HOST
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+@@ -567,3 +570,5 @@ void fpga_spi_fast_block_read_be(uint16_t *buf, uint32_t length)
+ {
+ 	printf("*** fpga_spi_fast_block_read_be(%d) is not implemented ***\n", length);
+ }
++
++#endif // !PCIE_HOST
+diff --git a/shmem.cpp b/shmem.cpp
+index dbeecee..df59cfb 100644
+--- a/shmem.cpp
++++ b/shmem.cpp
+@@ -13,6 +13,14 @@
+ 
+ #include "shmem.h"
+ 
++// All four entry points are stubs on MiSTeX (SPI cannot map fabric memory).
++// On the PCIe hosts (FPGA-Retro, -DPCIE_HOST) they stay stubs until a
++// framebuffer / DDRAM bridge exists in the gateware; they then become
++// LitePCIe DMA reads and writes of that memory (FPGA-Retro
++// docs/retro-cores.md, "The three things every core needs", item 3).  Keep
++// every shmem access going through these four functions so that is the
++// only place that changes.
++
+ static int memfd = -1;
+ 
+ void *shmem_map(uint32_t address, uint32_t size)

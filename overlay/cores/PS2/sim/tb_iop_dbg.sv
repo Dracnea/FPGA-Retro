@@ -8,10 +8,10 @@ module tb_iop_dbg;
    always #(P1/6) clk3x = ~clk3x;
    reg rom_wr = 0; reg [19:0] rom_addr = 0; reg [31:0] rom_data = 0;
    wire [7:0] post_code; wire post_wr, cpu_error, mem_idle;
-   iop_top dut(.clk1x(clk1x), .clk2x(clk2x), .clk3x(clk3x), .reset(reset), .hblank(1'b0), .vblank(1'b0), .ext_irq(32'h0),
+   iop_top dut(.clk1x(clk1x), .clk2x(clk2x), .clk3x(clk3x), .reset(reset), .hblank(1'b0), .vblank(1'b0), .ext_irq(32'h0), .pad0_buttons(16'h5A3C),
       .rom_wr(rom_wr), .rom_addr(rom_addr), .rom_data(rom_data), .post_code(post_code), .post_wr(post_wr), .cpu_error(cpu_error), .mem_idle(mem_idle));
    reg [31:0] image [0:4095]; integer i;
-   integer cyc = 0, ncycles, quiet, regs, rfrom, rto, pfrom, pto;
+   integer cyc = 0, ncycles, quiet, regs, rfrom, rto, pfrom, pto, tfrom;
    reg [31:0] pc_prev = 0;
    initial begin
       $readmemh("boot_test.hex", image);
@@ -28,8 +28,24 @@ module tb_iop_dbg;
       if (!$value$plusargs("rto=%d", rto))       rto = 0;
       if (!$value$plusargs("pfrom=%d", pfrom))   pfrom = 0;    // PC-jump trace window
       if (!$value$plusargs("pto=%d", pto))       pto = 0;
+      if (!$value$plusargs("tfrom=%d", tfrom))   tfrom = 0;    // start of the transaction trace
       repeat (ncycles) @(posedge clk1x);
       $display("END last POST %02x cpu_error=%b", post_code, cpu_error); $finish;
+   end
+   // +spu=1: SPU core 0's work-RAM port and its transfer FIFO
+   integer spu; reg [18:0] spu_adr; reg [31:0] spu_wd, spu_rd; reg [1:0] spu_ena, spu_rnw, spu_done;
+   initial if (!$value$plusargs("spu=%d", spu)) spu = 0;
+   always @(posedge clk1x) if (spu && !reset) begin
+      if (dut.ispu2.gcores[0].ispu.ispu_ram.sdram_ena)
+         $display("%8d SPU0 spu_ram.sdram_ena rnw=%b adr=%05x", cyc, dut.ispu2.gcores[0].ispu.ispu_ram.sdram_rnw, dut.ispu2.gcores[0].ispu.ispu_ram.sdram_Adr);
+      if (dut.ispu2.gcores[0].iram.wbe != 0)
+         $display("%8d SPU0 spuram wbe=%b wrow=%04x", cyc, dut.ispu2.gcores[0].iram.wbe, dut.ispu2.gcores[0].iram.wrow);
+      if (dut.ispu2.gcores[0].iram.ram_ena && !dut.ispu2.gcores[0].iram.ram_rnw)
+         $display("%8d SPU0 spuram WR adr=%05x wdata=%08x be=%b wbe=%b wrow=%05x", cyc, dut.ispu2.gcores[0].iram.ram_Adr, dut.ispu2.gcores[0].iram.ram_dataWrite, dut.ispu2.gcores[0].iram.ram_be, dut.ispu2.gcores[0].iram.wbe, dut.ispu2.gcores[0].iram.wrow);
+      if (dut.ispu2.gcores[0].ispu.ram_request && !dut.ispu2.gcores[0].ispu.ram_rnw)
+         $display("%8d SPU0 spu.ram_request WR adr=%05x data=%04x isTransfer=%b", cyc, dut.ispu2.gcores[0].ispu.ram_Adr, dut.ispu2.gcores[0].ispu.ram_dataWrite, dut.ispu2.gcores[0].ispu.ram_isTransfer);
+      if (dut.ispu2.gcores[0].ispu.FifoIn_Wr) $display("%8d SPU0 fifo in  <= %04x", cyc, dut.ispu2.gcores[0].ispu.FifoIn_Din);
+      if (dut.ispu2.gcores[0].ispu.FifoIn_Rd) $display("%8d SPU0 fifo out => %04x (empty=%b)", cyc, dut.ispu2.gcores[0].ispu.FifoIn_Dout, dut.ispu2.gcores[0].ispu.FifoIn_Empty);
    end
    // +rf=1: the register-file model's own view of its write port and array
    integer rf;
@@ -42,6 +58,7 @@ module tb_iop_dbg;
    end
    always @(posedge clk1x) if (!reset) begin
       cyc = cyc + 1;
+      if (cyc >= tfrom) begin
       if (dut.mem_request && !(quiet && !dut.mem_isData)) $display("%5d CPU  req rnw=%b isData=%b isCache=%b addrI=%08x addrD=%08x size=%d mask=%b wdata=%08x", cyc, dut.mem_rnw, dut.mem_isData, dut.mem_isCache, dut.mem_addressInstr, dut.mem_addressData, dut.mem_reqsize, dut.mem_writeMask, dut.mem_dataWrite);
       if (dut.mem_done && !quiet)    $display("%5d CPU  done data=%08x tagvalids=%b", cyc, dut.mem_dataRead, dut.mem_tagvalids);
       if (dut.ram_ena && !(quiet && dut.ram_Adr[23]))     $display("%5d RAM  ena rnw=%b adr=%07x be=%b cache=%b wdata=%08x", cyc, dut.ram_rnw, dut.ram_Adr, dut.ram_be, dut.ram_cache, dut.ram_dataWrite);
@@ -53,6 +70,7 @@ module tb_iop_dbg;
       if (dut.bus_memc2_read)  $display("%5d MEMC2 read  addr=%01x", cyc, dut.bus_memc2_addr);
       if (dut.bus_exp2_write) $display("%5d EXP2 write addr=%04x data=%02x", cyc, dut.bus_exp2_addr, dut.bus_exp2_dataWrite);
       if (post_wr) $display("%5d POST %02x", cyc, post_code);
+      end
       // +pfrom/+pto: print every non-sequential PC change (jumps, branches, exceptions)
       if (cyc >= pfrom && cyc <= pto && dut.icpu.PC != pc_prev && dut.icpu.PC != pc_prev + 4)
          $display("%8d JUMP  %08x -> %08x  SR=%08x CAUSE=%08x EPC=%08x", cyc, pc_prev, dut.icpu.PC, dut.icpu.cop0_SR, dut.icpu.cop0_CAUSE, dut.icpu.cop0_EPC);

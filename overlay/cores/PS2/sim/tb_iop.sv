@@ -20,12 +20,13 @@ module tb_iop;
    iop_top dut
    (
       .clk1x(clk1x), .clk2x(clk2x), .clk3x(clk3x), .reset(reset),
-      .hblank(hblank), .vblank(vblank), .ext_irq(32'h0),
+      .hblank(hblank), .vblank(vblank), .ext_irq(32'h0), .pad0_buttons(16'h5A3C),
       .rom_wr(rom_wr), .rom_addr(rom_addr), .rom_data(rom_data),
       .post_code(post_code), .post_wr(post_wr),
       .cpu_error(cpu_error), .mem_idle(mem_idle)
    );
 
+   reg [127:0] spu_row;
    reg [31:0] image [0:4095];
    integer i, t0;
    string romfile;
@@ -56,7 +57,16 @@ module tb_iop;
    always @(posedge clk1x) begin
       if (post_wr) begin
          $display("[%0t] POST %02x", $time, post_code);
-         if (post_code == 8'hAA) begin $display("PASS"); $finish; end
+         if (post_code == 8'hAA) begin
+            // stage 08 wrote 1111 2222 3333 4444 at byte 0x2000 of core 0's work RAM: row 0x200, lanes 0-3
+            spu_row = dut.ispu2.gcores[0].iram.sim_row200;
+            if (spu_row !== 128'h0000_0000_0000_0000_4444_3333_2222_1111) begin
+               $display("FAIL: SPU core 0 RAM row 0x200 = %032x, expected ...4444333322221111", spu_row);
+               $finish;
+            end
+            $display("SPU core 0 RAM row 0x200 = %032x (ok)", spu_row);
+            $display("PASS"); $finish;
+         end
          if (post_code == 8'hEE) begin $display("FAIL: test reported failure"); $finish; end
       end
       if (cpu_error && !reset) begin $display("FAIL: cpu error flag"); $finish; end

@@ -1,0 +1,8 @@
+0.7
+2020.2
+Jun 16 2026
+11:12:08
+/home/dracnea/FPGA-Retro/overlay/rtl/hps_pcie/hps_io_wrap.sv,1788720626,systemVerilog,,/home/dracnea/FPGA-Retro/overlay/rtl/hps_pcie/sim/tb_hps.sv,,hps_io_wrap,,,,XILINX,,,,
+/home/dracnea/FPGA-Retro/overlay/rtl/hps_pcie/sim/tb_hps.sv,1788720716,systemVerilog,,,,tb_hps,,,,XILINX,,,,
+/home/dracnea/FPGA-Retro/overlay/rtl/hps_pcie/sim/work/hps_bridge.v,1788720716,verilog,,,,hps_bridge,,,,,,,,
+/home/dracnea/FPGA-Retro/overlay/rtl/hps_pcie/sim/work/hps_io_sim.sv,1788720717,systemVerilog,,/home/dracnea/FPGA-Retro/overlay/rtl/hps_pcie/hps_io_wrap.sv,,confstr_rom;hps_io;ps2_device;video_calc,,,,XILINX,,,,

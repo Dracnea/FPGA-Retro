@@ -14,8 +14,11 @@ read_vhdl -vhdl2008 -library mem [list \
   $up/SyncRam.vhd $ovl/cores/PSX/rtl/SyncRamDual.vhd $ovl/cores/PSX/rtl/SyncRamDualNotPow2.vhd \
   $up/SyncRamDualByteEnable.vhd $up/dpram.vhd $up/export.vhd $up/divider.vhd $up/datacache.vhd \
   $up/cpu.vhd $up/timer.vhd $up/memctrl.vhd \
+  $up/spu_gauss.vhd $up/spu_ram.vhd $up/spu.vhd \
   $core/rtl/iop/iop_regstub.vhd $core/rtl/iop/iop_intc.vhd $core/rtl/iop/iop_timer32.vhd \
-  $core/rtl/iop/iop_ram.vhd $core/rtl/iop/iop_memorymux.vhd $core/rtl/iop/iop_top.vhd]
+  $core/rtl/iop/iop_ram.vhd $core/rtl/iop/iop_spuram.vhd $core/rtl/iop/iop_spu2.vhd \
+  $core/rtl/iop/iop_sio2.vhd $core/rtl/iop/iop_cdvd.vhd \
+  $core/rtl/iop/iop_memorymux.vhd $core/rtl/iop/iop_top.vhd]
 synth_design -top iop_top -part $part -mode out_of_context -flatten_hierarchy rebuilt
 # the IOP clock and the PSX core's phase-aligned multiples.  The periods must
 # be exact multiples of each other: 27.127 / 13.563 / 9.042 leaves the

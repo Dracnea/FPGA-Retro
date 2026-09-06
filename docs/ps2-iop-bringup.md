@@ -166,3 +166,88 @@ behaviour, all of which are stubs; the IOP kernel booting (that needs the
 DMA controller and SIF at minimum, and the real BIOS, which is not
 redistributable). The verdict in [retro-cores.md](retro-cores.md) stands; this
 is the first block of the long road it describes.
+
+## Second pass, 2026-09-06: SPU2, SIO2, CDVD — simulated and fitted
+
+The next three blocks of §7 step 1, on top of the stage above, simulation
+and fit only (the C1100 stayed on its other work). What each is and is not
+is in the file headers and in [overlay/cores/PS2/README.md](../overlay/cores/PS2/README.md).
+
+- **SPU2** as two instances of PSX_MiSTer's SPU (`iop_spu2.vhd`) at
+  0x1F900000 / 0x1F900400, each with 512 KB of work RAM in URAM
+  (`iop_spuram.vhd`) behind `spu_ram`'s SDRAM-style port. The register
+  layout is the PS1's, not the SPU2's, and there is no DMA: the cores, RAM,
+  transfer FIFO and IRQ plumbing are real, the SPU2 decode in front of them
+  is the next job.
+- **SIO2** (`iop_sio2.vhd`): command queue, FIFOs, CTRL, RECV1-3, I_STAT,
+  INTC bit 17, with a PS1-protocol digital pad on port 0 fed from a
+  `pad0_buttons` port on `iop_top`. Semantics from PCSX2's Sio2 (ps2tek
+  lists only the addresses); unverified against hardware.
+- **CDVD** (`iop_cdvd.vhd`): the N/S command ports, status, error, I_STAT,
+  INTC bit 2; the boot-time S commands answered with PCSX2's values; no
+  disc, no sector path. Unverified against a drive.
+
+Simulation — verified (`run_sim.sh`, 2026-09-06):
+
+```
+[122298000]  POST 01 .. [3993368000] POST 06     as before
+[4022203000] POST 07   SPU2 voice registers written/read on both cores (sh/lhu)
+[5133148000] POST 08   SPU2 transfer FIFO -> work RAM 0x2000 (row checked by the bench: 4444 3333 2222 1111)
+[5201017000] POST 09   SIO2 pad poll: FF 41 5A 3C 5A, RECV1 0x1100, I_STAT, INTC bit 17
+[5265062000] POST 0a   CDVD: no disc, N ready 0x4A, S 03/00 -> 03 06 02 00, N 00 -> I_STAT, INTC bit 2
+[5266933000] POST aa   PASS
+```
+
+190,000 IOP cycles, 5.2 ms of console time. Three more findings on the way,
+recorded as items 6-8 of the core README: stores reach the internal buses
+word-aligned with the lanes in the write mask (the mux now exports that
+mask), peripheral read data is sampled exactly one cycle after the strobe,
+and xsim returns junk for a VHDL array element read from a SystemVerilog
+bench (the RAM now mirrors the checked row into a scalar for the bench).
+
+Out-of-context fit — measured, clocks 27.126 / 13.563 / 9.042 ns:
+
+| | xcu55n (C1100) | xcvu33p (FK33) |
+|---|---:|---:|
+| CLB LUTs | 16,349 (1.88 %) | 16,349 (3.72 %) |
+| CLB registers | 13,306 (0.76 %) | 13,306 (1.51 %) |
+| Block RAM tiles | 57.5 (4.28 %) | 57.5 (8.56 %) |
+| **URAM** | **224 of 640 (35 %)** | **224 of 320 (70 %)** |
+| DSP | 34 | 34 |
+| clk1x WNS | +20.734 ns | +20.726 ns |
+| inert-constraint signatures in log | 0 | 0 |
+
+Of that, the SPU2 is 8,311 LUTs, 5,660 registers, 32 BRAM tiles and 32
+URAM (the two 512 KB work RAMs), SIO2 375 LUTs and CDVD 58. The register
+count *fell* from the first pass's 25,454: the SPU2 stub it replaces was a
+512-entry, 32-bit read-back register file, 16k flip-flops of nothing. The
+FK33 now has 70 % of its URAM in this one subsystem; the 4 MB ROM (128 of
+the 224) is the lever there.
+
+Not done, and needed before the C1100 image is rebuilt with this: the
+board target `c1100_ps2_iop.py` does not yet connect `iop_top`'s new
+`pad0_buttons` input (a CSR) and `spu_l0/r0/l1/r1` outputs; the bitstream in
+`bitstreams/` is the first-pass IOP.
+
+### Bitstream rebuilt with the second pass (2026-09-06, later)
+
+`c1100_ps2_iop.py` gained an `iop_pad0` CSR (SIO2 port 0 buttons, active
+low, PS1 bit order) and the four SPU2 audio outputs, unconnected until there
+is an audio sink. Rebuilt with SPU2, SIO2 and CDVD in:
+
+```
+WNS +0.168   TNS 0.000   WHS +0.010   THS 0.000
+98,932 endpoints, 0 failing
+All user specified timing constraints are met.
+```
+
+| resource | used | util |
+|---|---:|---:|
+| CLB LUTs | 20,791 | 2.39 % |
+| CLB registers | 22,145 | 1.27 % |
+| Block RAM tiles | 82 | 6.10 % |
+| URAM | 224 | 35.0 % |
+
+`bitstreams/c1100_ps2_iop.bit`, md5 `9164ab8c3f872f460f6694d0dd60f8ec`, with
+its `csr.csv`. The first-pass image (md5 `6fab4441…`) is superseded. Still
+not loaded: the card stays on its other work until told otherwise.

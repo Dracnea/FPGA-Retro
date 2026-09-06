@@ -35,6 +35,11 @@ once, before any core, rather than per core:
    framebuffer status lines). MiSTeX replaced the ARM with an SPI bridge; here
    it becomes a register block on the PCIe BAR (the LitePCIe Wishbone bridge
    is in the transport already) and `Main_MiSTeX`'s `shmem_*` become DMA.
+   **Done for the transport half (2026-09-06):** `overlay/rtl/hps_pcie` is
+   that register block, simulated against the real `hps_io.sv`, and
+   `host/main_mistex_pcie` is Main_MiSTeX driving it —
+   [host-gui-compatibility.md](host-gui-compatibility.md). `shmem_*` waits
+   for item 2.
 
 ## Per console
 

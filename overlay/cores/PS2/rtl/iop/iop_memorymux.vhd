@@ -165,18 +165,21 @@ entity iop_memorymux is
       bus_sif_dataRead     : in  std_logic_vector(31 downto 0);
 
       bus_cdvd_addr         : out unsigned(5 downto 0); 
+      bus_cdvd_writeMask    : out std_logic_vector(3 downto 0);
       bus_cdvd_dataWrite    : out std_logic_vector(31 downto 0);
       bus_cdvd_read         : out std_logic;
       bus_cdvd_write        : out std_logic;
       bus_cdvd_dataRead     : in  std_logic_vector(31 downto 0);
 
-      bus_sio2_addr         : out unsigned(6 downto 0); 
+      bus_sio2_addr         : out unsigned(7 downto 0); 
+      bus_sio2_writeMask    : out std_logic_vector(3 downto 0);
       bus_sio2_dataWrite    : out std_logic_vector(31 downto 0);
       bus_sio2_read         : out std_logic;
       bus_sio2_write        : out std_logic;
       bus_sio2_dataRead     : in  std_logic_vector(31 downto 0);
 
       bus_spu2_addr         : out unsigned(10 downto 0); 
+      bus_spu2_writeMask    : out std_logic_vector(3 downto 0);
       bus_spu2_dataWrite    : out std_logic_vector(31 downto 0);
       bus_spu2_read         : out std_logic;
       bus_spu2_write        : out std_logic;
@@ -526,6 +529,7 @@ begin
       bus_cdvd_read      <= '0';
       bus_cdvd_write     <= '0';
       bus_cdvd_addr      <= address(5 downto 0);
+      bus_cdvd_writeMask <= writeMask_buf;
       bus_cdvd_dataWrite <= dataWrite_buf;
       if (address >= 16#1F402000# and address < 16#1F402040#) then
          bus_cdvd_read  <= enableRead;
@@ -535,9 +539,10 @@ begin
       -- IOP: sio2
       bus_sio2_read      <= '0';
       bus_sio2_write     <= '0';
-      bus_sio2_addr      <= address(6 downto 0);
+      bus_sio2_addr      <= address(7 downto 0);
+      bus_sio2_writeMask <= writeMask_buf;
       bus_sio2_dataWrite <= dataWrite_buf;
-      if (address >= 16#1F808200# and address < 16#1F808280#) then
+      if (address >= 16#1F808200# and address < 16#1F808300#) then   -- I_STAT is at 0x1F808280
          bus_sio2_read  <= enableRead;
          bus_sio2_write <= enableWrite;
       end if;
@@ -546,6 +551,7 @@ begin
       bus_spu2_read      <= '0';
       bus_spu2_write     <= '0';
       bus_spu2_addr      <= address(10 downto 0);
+      bus_spu2_writeMask <= writeMask_buf;
       bus_spu2_dataWrite <= dataWrite_buf;
       if (address >= 16#1F900000# and address < 16#1F900800#) then
          bus_spu2_read  <= enableRead;
