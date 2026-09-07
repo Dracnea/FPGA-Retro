@@ -151,6 +151,17 @@ class PCIeVideoSoC(SoCMini):
                                       data_width = {1:64, 4:128, 8:256, 16:512}[nlanes],
                                       bar0_size  = 0x20000)
 
+        # BAR0 must be 64-bit prefetchable on this card. With a 32-bit BAR the
+        # host places it in a 32-bit window that the firmware never routed
+        # (assigned by Linux at rescan), and every access returns 0xffffffff
+        # with no error on either end; in the 64-bit prefetchable window the
+        # firmware set up at boot the same design works. Measured 2026-09-07,
+        # docs/c1100-pcie-transport.md ("BAR0 reads return 0xFFFFFFFF").
+        self.pcie_phy.update_config({
+            "pf0_bar0_64bit":        "true",
+            "pf0_bar0_prefetchable": "true",
+        })
+
         self.add_pcie(phy=self.pcie_phy, ndmas=1,
                       with_dma_buffering = True, dma_buffering_depth=1024,
                       with_dma_loopback  = False)

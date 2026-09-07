@@ -251,6 +251,12 @@ All user specified timing constraints are met.
 `bitstreams/c1100_ps2_iop.bit`, md5 `9164ab8c3f872f460f6694d0dd60f8ec`, with
 its `csr.csv`. The first-pass image (md5 `6fab4441…`) is superseded.
 
+**Rebuilt 2026-09-07 21:10 with BAR0 64-bit prefetchable** (the fix for the
+all-ones reads, [c1100-pcie-transport.md](c1100-pcie-transport.md)): md5
+`3ac569521c495e99049842f3307e54ef`, WNS +0.168 ns, 0 failing endpoints, no
+inert-constraint signature in the log, `iop_*` CSR addresses unchanged.
+That is the image to run `hw-test.sh` against.
+
 ## Loaded on the C1100, 2026-09-07
 
 The card came free (a power cut had reverted it to its flash image, which the

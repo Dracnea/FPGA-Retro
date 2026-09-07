@@ -99,7 +99,8 @@ int main(void)
 
     struct litepcie_dma_ctrl dma;
     memset(&dma, 0, sizeof(dma));
-    dma.use_writer = 1;
+    dma.use_writer    = 1;
+    dma.writer_enable = 1;   /* liblitepcie only starts the writer when this is set (litepcie_dma_process) */
     dma.loopback   = 0;
 
     if (litepcie_dma_init(&dma, DEVICE, 0)) {
@@ -135,10 +136,19 @@ int main(void)
             t_start = t_first;
         }
 
+        /* The frame source drives a 32-bit word into the DMA's 128-bit sink,
+         * so each 16-byte beat carries one sequence word (word 0) followed by
+         * three zero words. A real core's video sink packs four pixels per
+         * beat; this test checks the transport, not the packing. */
         uint32_t *w = (uint32_t *)buf;
         unsigned nw = DMA_BUFFER_SIZE / 4;
-        for (unsigned i = 0; i < nw; i++) {
+        for (unsigned i = 0; i < nw; i += 4) {
             uint32_t v = w[i];
+            if (w[i + 1] | w[i + 2] | w[i + 3]) {
+                if (errors < 8)
+                    printf("  PAD not zero at word %" PRIu64 ": %08x %08x %08x\n", words, w[i + 1], w[i + 2], w[i + 3]);
+                errors++;
+            }
             if (have_prev) {
                 uint32_t pi = prev & 0x00ffffff, pf = prev >> 24;
                 uint32_t ei = (pi == (uint32_t)(NPIX - 1)) ? 0 : pi + 1;

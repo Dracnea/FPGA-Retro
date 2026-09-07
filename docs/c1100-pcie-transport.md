@@ -291,10 +291,68 @@ so the firmware assigns the windows). `tools/pcie-diag.sh` now also clears
 and prints the root port's secondary status and shows `/proc/iomem` around
 the BARs.
 
-Until that has run, every hardware claim below the enumeration section for
-`c1100_hps_test`, `c1100_hps_video_test` and `c1100_ps2_iop` stands
-unverified, and the PS2 IOP `hw-test.sh` output of 2026-09-07 (POST FF,
-`cpu_error` 1, counts 0xffffffff) is the all-ones read, not an IOP result.
+**Result, 2026-09-07 20:50 (`build/pcie_diag/20260907-205049.log`): it
+works.** BAR0 landed at `1801e000000` (64-bit, prefetchable, 128 K) inside
+the port's boot-time prefetchable window, and:
+
+```
+raw read scratch     @0x0004 = 0x12345678          (driver unloaded, resource0 mmap)
+1000 reads: 2.1 ms total  -> 2.1 us each           (real completions; was 0.6 us for the all-ones)
+Write 0x12345678 to Scratch register:  Read: 0x12345678
+Write 0xdeadbeef to Scratch register:  Read: 0xdeadbeef
+litepcie 0000:c1:00.0: Version C1100 PCIe video transport x4 gen3
+Secondary status: ... <MAbort-                     (cleared first, stayed clear)
+```
+
+and the analyzers finally saw a request: a MemWr to `0x1801e000004`, BAR 0,
+aperture 17, requester `c0:00.0`, followed by the wishbone write of
+`0xa5a5f00d` to address 4 and its ack; the UART read the same value back.
+
+**Root cause: the host, not the card.** Linux assigned the 32-bit
+non-prefetchable BAR0 into `b6c00000-b6cfffff`, a window it carved from
+the root bus's 32-bit range at the first rescan; the firmware had only
+routed this port's 64-bit prefetchable window (used by the factory image's
+BARs) at boot. Accesses to the unrouted window return all ones from the
+host fabric with no PCIe transaction at all, which is why neither end ever
+logged anything and why config accesses (a different path) kept working.
+The LitePCIe design, the rewritten PHY path and the 128 KB aperture were
+all fine.
+
+**Fix, applied to every C1100 target:** BAR0 is declared 64-bit
+prefetchable (`pf0_bar0_64bit`/`pf0_bar0_prefetchable`, Corundum's
+configuration on this card), so the kernel places it in the window the
+firmware routed. The alternative is a warm reboot with the image loaded so
+the firmware assigns the windows itself; the BAR type is the one that
+survives a rescan.
+
+**DMA, measured the same evening on the diagnostic image (same transport):**
+`litepcie_util dma_test` runs the writer through its 256-entry table in
+loop mode (2,111 loops in a few seconds, 38,032 MSIs), and
+`tools/frametest` — now that it sets liblitepcie's `writer_enable`, which
+`litepcie_dma_process` needs and the tool never set — reports:
+
+```
+enable -> 1st word: 132.7 us / 216.9 us (two runs)
+bytes transferred : 67108864 (64.0 MiB)
+words checked     : 4194304   sequence errors: 8191 (one per 8 KB buffer boundary)
+```
+
+Two findings behind those numbers. The test frame source drives its 32-bit
+word into the DMA's 128-bit sink, so every 16-byte beat carries one word
+and three zeros (the checker now expects that; a real core's `video_sink`
+packs four pixels per beat). And inside each 8 KB buffer the sequence is
+perfect; the one error per buffer is a jump of 4096 words, i.e. the source
+produced nine buffers while the test's host loop consumed one and the ring
+wrapped. The source is not throttled by the test, so that is a statement
+about the test loop (26 MB/s), not about the transport. Pacing the source
+or a zero-copy consumer is the next refinement; `retroview`'s litepcie
+transport is that consumer.
+
+Everything below the enumeration section for
+`c1100_hps_test`, `c1100_hps_video_test` and `c1100_ps2_iop` is being
+re-measured on images rebuilt with that BAR; the PS2 IOP `hw-test.sh`
+output of 2026-09-07 17:24 (POST FF, `cpu_error` 1, counts 0xffffffff) was
+the all-ones read, not an IOP result.
 
 **Device node permissions.** The driver creates `/dev/litepcie0` as
 `root:root 0600`, so every tool needs root. `tools/99-litepcie.rules` relaxes

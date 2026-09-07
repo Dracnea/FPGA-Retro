@@ -141,7 +141,10 @@ All user specified timing constraints are met.
 | CLB registers | 10,183 | 0.58 % |
 
 `bitstreams/c1100_hps_video_test.bit`, md5 `9680c6a7693fa6fefc8929b0fb5a7b78`,
-with its `csr.csv`. The pattern generator and sink add about 420 LUTs to the
+with its `csr.csv`. **Rebuilt 2026-09-07 21:05 with BAR0 64-bit
+prefetchable** (see `c1100-pcie-transport.md` for why): md5
+`074562fc4f493161d0710d533effa420`, WNS +0.598 ns, 0 failing endpoints,
+CSR map unchanged. The pattern generator and sink add about 420 LUTs to the
 HPS test image. Three MMCM outputs (sys, core, vid) are declared asynchronous
 by pin in the pre-placement commands; the log has no `No clocks matched`, and
 the only `12-4739` lines are the two from Xilinx's PCIe IP.

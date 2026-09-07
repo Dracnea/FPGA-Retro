@@ -151,10 +151,7 @@ class PCIeDiagSoC(PCIeVideoSoC):
         # error, while the block's own status showed no Unsupported Request.
         # A 64-bit prefetchable BAR lands in the port's prefetchable window,
         # which the firmware routed at boot for the factory image's BARs.
-        self.pcie_phy.update_config({
-            "pf0_bar0_64bit":        "true",
-            "pf0_bar0_prefetchable": "true",
-        })
+        # (BAR0 64-bit prefetchable now comes from the base target.)
 
         # CSR bus over the UART.
         self.add_uartbone("serial", baudrate=baudrate)
