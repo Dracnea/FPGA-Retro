@@ -5,7 +5,13 @@ watch the POST register.
     iop_post.py [--dev /dev/litepcie0] [--csr csr.csv] status
     iop_post.py ... load ROM.hex|ROM.bin [--addr WORD]     # write an image into the IOP ROM
     iop_post.py ... reset {hold|release}
-    iop_post.py ... run ROM.hex|ROM.bin [--timeout SEC]    # load, release, poll until AA/EE
+    iop_post.py ... pad [VALUE]                            # read or set the SIO2 port-0 pad (iop_pad0)
+    iop_post.py ... run ROM.hex|ROM.bin [--timeout SEC] [--pad0 VALUE]   # load, release, poll until AA/EE
+
+`run` writes `iop_pad0` before releasing reset. The CSR resets to 0xFFFF (nothing
+pressed) but boot_test.s stage 09 expects the pad to answer 0x5A3C, which is what
+the testbench drives, so that is the default; pass --pad0 0xFFFF to make stage 09
+fail on purpose and prove the pad path is live.
 
 ROM images are either the assembler's one-hex-word-per-line files
 (cores/PS2/sim/asm_r3000.py) or raw little-endian words.  Word address 0 is
@@ -98,8 +104,10 @@ def load(dev, path, addr=0):
     return len(words)
 
 
-def run(dev, path, timeout):
+def run(dev, path, timeout, pad0=0x5A3C):
     dev.wr("iop_reset", 1)
+    dev.wr("iop_pad0", pad0 & 0xFFFF)
+    print(f"iop_pad0 = 0x{dev.rd('iop_pad0') & 0xFFFF:04X}")
     load(dev, path)
     seen = None
     dev.wr("iop_reset", 0)
@@ -129,6 +137,8 @@ def main():
     p = sub.add_parser("load");  p.add_argument("rom"); p.add_argument("--addr", type=lambda x: int(x, 0), default=0)
     p = sub.add_parser("reset"); p.add_argument("state", choices=["hold", "release"])
     p = sub.add_parser("run");   p.add_argument("rom"); p.add_argument("--timeout", type=float, default=5.0)
+    p.add_argument("--pad0", type=lambda x: int(x, 0), default=0x5A3C)
+    p = sub.add_parser("pad");   p.add_argument("value", nargs="?", type=lambda x: int(x, 0))
     a = ap.parse_args()
 
     dev = Dev(a.dev, a.csr)
@@ -139,8 +149,12 @@ def main():
     elif a.cmd == "reset":
         dev.wr("iop_reset", 1 if a.state == "hold" else 0)
         show(dev)
+    elif a.cmd == "pad":
+        if a.value is not None:
+            dev.wr("iop_pad0", a.value & 0xFFFF)
+        print(f"iop_pad0 = 0x{dev.rd('iop_pad0') & 0xFFFF:04X}")
     elif a.cmd == "run":
-        sys.exit(run(dev, a.rom, a.timeout))
+        sys.exit(run(dev, a.rom, a.timeout, a.pad0))
 
 
 if __name__ == "__main__":

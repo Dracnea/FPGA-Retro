@@ -8,8 +8,8 @@ What the block contains and what simulation found is in
 the measurements.
 
 Everything under "measured" was produced on 2026-09-06 with Vivado/xsim
-2026.1. The hardware step is not done: the C1100 in this host is busy with
-other work, so the bitstream has been built but not loaded.
+2026.1. The bitstream was loaded on the C1100 on 2026-09-07 (last section);
+the POST run on hardware is the next step.
 
 ## Simulation — verified
 
@@ -249,5 +249,41 @@ All user specified timing constraints are met.
 | URAM | 224 | 35.0 % |
 
 `bitstreams/c1100_ps2_iop.bit`, md5 `9164ab8c3f872f460f6694d0dd60f8ec`, with
-its `csr.csv`. The first-pass image (md5 `6fab4441…`) is superseded. Still
-not loaded: the card stays on its other work until told otherwise.
+its `csr.csv`. The first-pass image (md5 `6fab4441…`) is superseded.
+
+## Loaded on the C1100, 2026-09-07
+
+The card came free (a power cut had reverted it to its flash image, which the
+host enumerates as `10ee:5058` with no driver). The second-pass image above was
+loaded over JTAG:
+
+```
+[load] c1100_ps2_iop.bit (56659936 bytes of config data)
+[load] STAT=0x109079fc  DONE=1 EOS=1 CRC_ERR=0
+```
+
+Configuration is verified on silicon: DONE and EOS high, no CRC error. The
+PCIe side is not yet run — dropping the stale `5058` identity, the rescan and
+`litepcie.ko` need root, which the loading session did not have. Everything
+from that point is one command, `sudo tools/ps2iop/hw-test.sh`, which does the
+root part and then runs the sequence below as the invoking user, logging to
+`build/ps2_hw/`. It has not been run; the results will replace this paragraph.
+
+Two things found while preparing the run, both now handled in
+`tools/ps2iop/iop_post.py`:
+
+- **Stage 09 needs the pad set.** `iop_pad0` resets to `0xFFFF` (nothing
+  pressed) and `boot_test.s` stage 09 expects the pad to answer `0x5A3C`,
+  which is what `tb_iop.sv` drives. On hardware that stage would have failed
+  for no fault of the design. `run` now writes `iop_pad0` (default `0x5A3C`)
+  before releasing reset, and `run --pad0 0xFFFF` is a deliberate negative
+  test: stage 09 must then report EE, which proves the CSR reaches SIO2.
+- **`tools/frametest` must not be run against this image.** It hard-codes the
+  transport image's CSR map and `0x1000` is `iop_reset` here; the DMA integrity
+  test belongs to `c1100_pcie_video_transport.bit`.
+
+Planned sequence in `hw-test.sh`, in the order the failure modes above are
+checked: status (`locked` = 1, POST 00, counts 0), heartbeat read twice 0.5 s
+apart (must differ), ROM load with `rom_count` = 4096, the boot test with
+pad `0x5A3C` (expect 01..0A then AA), the same with pad `0xFFFF` (expect EE at
+09), five repeats of the passing run, final status.
