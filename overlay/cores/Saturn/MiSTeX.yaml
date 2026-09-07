@@ -1,0 +1,83 @@
+# Sega Saturn on UltraScale+ -- source list for the overlay, in MiSTeX's
+# convention (sourcedirs scanned non-recursively, quartus-listed files are
+# Altera IP left out of the Vivado build, vivado-listed files are the
+# replacements). MiSTeX-ports has no Saturn port; upstream is
+# MiSTer-devel/Saturn_MiSTer cloned to cores/Saturn/upstream. The Template
+# sys is used: the core's own sys/hps_io.sv declares kbd_*/mouse_* inside
+# generate blocks and uses them outside, which Vivado rejects; MiSTeX's
+# Template copy is the Xilinx-clean one.
+mainfile: Saturn.sv
+
+use-template-sys: True
+
+# The release .qsf's macros: LIGHT_SATURN trims the core to fit the DE10-Nano;
+# kept here so the numbers describe the core people actually run.
+defines:
+  MISTER_DISABLE_ALSA: 1
+  LIGHT_SATURN: 1
+
+sourcedirs:
+  - sys
+  - upstream/rtl
+  - upstream/rtl/ADSP_21xx
+  - upstream/rtl/FX68K
+  - upstream/rtl/Saturn
+  - upstream/rtl/Saturn/CD
+  - upstream/rtl/Saturn/SCSP
+  - upstream/rtl/Saturn/SCU
+  - upstream/rtl/Saturn/SMPC
+  - upstream/rtl/Saturn/STV
+  - upstream/rtl/Saturn/VDP1
+  - upstream/rtl/Saturn/VDP2
+  - upstream/rtl/SH/core
+  - upstream/rtl/SH/SH7034
+  - upstream/rtl/SH/SH7604
+
+quartus:
+  sourcefiles:
+    - upstream/rtl/bram.vhd
+    - upstream/rtl/Saturn/Saturn.sv
+    - upstream/rtl/SH/SH7604/WDT.sv
+    - upstream/rtl/Saturn/VDP2/VDP2.sv
+    - upstream/rtl/Saturn/VDP1/VDP1.sv
+    - upstream/rtl/Saturn/STV/STV_CART.sv
+    - upstream/rtl/Saturn/STV/RAX.sv
+    - upstream/rtl/Saturn/STV/93C45.sv
+    - upstream/rtl/Saturn/SCU/DSP.sv
+    - upstream/rtl/Saturn/SCSP/SCSP.sv
+    - upstream/rtl/Saturn/CD/YGR019.sv
+    - upstream/rtl/Saturn/CART.sv
+    - upstream/rtl/sdram2.sv
+    - upstream/rtl/sdram1.sv
+    - upstream/rtl/lightgun.sv
+    - upstream/rtl/hps2pad.sv
+    - sys/sys_top.sdc
+    - sys/pll_audio.v
+    - sys/pll_hdmi.v
+    - sys/pll_cfg.v
+    - upstream/rtl/pll/pll_0002.v
+    - upstream/rtl/pll.v
+    # procedural writes to plain outputs/wires; patched copies under rtl/
+    - upstream/rtl/ddram.sv
+
+vivado:
+  sourcefiles:
+    - rtl/bram.vhd
+    - rtl/Saturn/Saturn.sv
+    - rtl/SH/SH7604/WDT.sv
+    - rtl/Saturn/VDP2/VDP2.sv
+    - rtl/Saturn/VDP1/VDP1.sv
+    - rtl/Saturn/STV/STV_CART.sv
+    - rtl/Saturn/STV/RAX.sv
+    - rtl/Saturn/STV/93C45.sv
+    - rtl/Saturn/SCU/DSP.sv
+    - rtl/Saturn/SCSP/SCSP.sv
+    - rtl/Saturn/CD/YGR019.sv
+    - rtl/Saturn/CART.sv
+    - rtl/sdram2.sv
+    - rtl/sdram1.sv
+    - rtl/lightgun.sv
+    - rtl/hps2pad.sv
+    - rtl/pll_0002-xilinxusp.v
+    - rtl/pll.v
+    - rtl/ddram.sv

@@ -1,0 +1,22 @@
+# WonderSwan on UltraScale+ -- source list for the overlay, in MiSTeX's convention:
+# sourcedirs are scanned, quartus-listed files are Altera IP left out of the Vivado
+# build, vivado-listed files are the replacements. MiSTeX-ports has no WonderSwan port;
+# upstream is MiSTer-devel/WonderSwan_MiSTer cloned to cores/WonderSwan/upstream. Intel cells
+# the RTL instantiates are served by overlay/rtl/altera_compat.
+mainfile: WonderSwan.sv
+
+use-template-sys: True
+
+sourcedirs:
+  - sys
+  - upstream/rtl
+
+quartus:
+  sourcefiles:
+    - upstream/rtl/pll/pll_0002.v
+    - upstream/rtl/sdram.sv
+
+vivado:
+  sourcefiles:
+    - rtl/pll_0002-xilinxusp.v
+    - rtl/sdram.sv

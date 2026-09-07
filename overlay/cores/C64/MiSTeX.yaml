@@ -1,0 +1,60 @@
+# Overlay copy of MiSTeX's yaml for the UltraScale+ fit: identical except that
+# rtl/ltc2308_tape.sv (a stub for the I/O-board ADC these cards do not have) is
+# added; the -xilinx7 PLL shim is swapped for rtl/*-xilinxusp.v by core-fit.py.
+mainfile: C64.sv
+
+use-template-sys: True
+
+defines:
+  MISTER_FB: 1
+
+sourcedirs:
+  - sys
+  - upstream/rtl
+  - upstream/rtl/sid
+  - upstream/rtl/opl3
+  - upstream/rtl/iec_drive
+  - upstream/rtl/t65
+  - rtl/roms
+
+quartus:
+  sourcefiles:
+    - sys/sys_top.sdc
+    - sys/altera_pll_reconfig_top.v
+    - sys/altera_pll_reconfig_core.v
+    - sys/pll_audio_0002.v
+    - sys/pll_hdmi_0002.v
+    - sys/hdmi_config.sv
+    - rtl/pll.v
+    - rtl/iec_drive/iec_drive.sv
+
+vivado:
+  sourcefiles:
+    - rtl/ltc2308_tape.sv
+    - rtl/iec_drive/iecdrv_misc.sv
+    - sys/sys_top.xdc
+    - rtl/pll-xilinx7.v
+    - sys/xilinx7_mmcm_reconfig.v
+    - sys/xilinx_pll_reconfig_top.v
+    - sys/pll_hdmi_0002-xilinx7.v
+    - sys/pll_audio_0002-xilinx7.v
+    - rtl/iec_drive/iec_drive.sv
+    - rtl/c1351.v
+    - rtl/c1530.vhd
+    - rtl/cartridge.v
+    - rtl/cpu_6510.vhd
+    - rtl/iec_drive/c1541_gcr.sv
+    - rtl/iec_drive/c1541_multi.sv
+    - rtl/iec_drive/c1581_multi.sv
+    - rtl/iec_drive/fdc1772.v
+    - rtl/iec_drive/iecdrv_mos8520.v
+    - rtl/mos6526.v
+    - rtl/opl3/NextZ80Reg.v
+    - rtl/opl3/compressor.sv
+    - rtl/reu.v
+    - rtl/sdram.v
+    - rtl/sid/sid_dac.sv
+    - rtl/sid/sid_filter.sv
+    - rtl/sid/sid_tables.sv
+    - rtl/sid/sid_top.sv    
+

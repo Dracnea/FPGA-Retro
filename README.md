@@ -36,7 +36,7 @@ functions over PCIe plus retargeting the SPI transport.
 
 | stage | status |
 |---|---|
-| Retro core (NES) | blocked on the video sink below; MMCME4 PLL shim done |
+| Retro cores | 17 systems fitted on both dies (GB/GBC, SNES, GBA, PSX, N64; Saturn, Mega Drive, PC Engine, SMS, Neo Geo, Lynx, WonderSwan, Atari 7800/2600, C64, Amstrad, Amiga) — [docs/retro-cores.md](docs/retro-cores.md), [docs/retro-cores-second-pass.md](docs/retro-cores-second-pass.md); the first playable one waits on `sys_top` + memory bridge |
 | FPGA framebuffer | **`rtl/video_sink` streams a core's VGA output as FRM1 frames into the DMA, simulated word-for-word**; no framebuffer needed — [docs/host-video-path.md](docs/host-video-path.md) |
 | **PCIe → host RAM** | **built, timing-clean, loaded on hardware** — see [docs/c1100-pcie-transport.md](docs/c1100-pcie-transport.md) |
 | Host software | **`hps_pcie` bridge built and simulated against `hps_io.sv`; `Main_MiSTeX` builds natively on x86-64 with a PCIe backend** (`host/main_mistex_pcie`); `shmem_*` still stubbed — see [docs/host-gui-compatibility.md](docs/host-gui-compatibility.md) |

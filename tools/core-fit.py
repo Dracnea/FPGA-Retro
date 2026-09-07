@@ -114,6 +114,10 @@ def resolve(ports, core, build_dir):
             if exists(join(root, s)):    files.append(join(root, s));    break
         else:
             print(f"warning: {s} not found in overlay or core", file=sys.stderr)
+    # SystemVerilog packages before everything that imports them: Vivado reads the
+    # list in order and a package used before it is read is "not declared"
+    # (Saturn's SCU/DSP.sv sorts before SCU/DSP_PKG.sv).
+    files.sort(key=lambda f: 0 if re.search(r"_pkg\.sv$", basename(f), re.I) else 1)
     # Compat cells last: user modules named like Intel megafunctions.
     cdir = join(OVERLAY, "rtl", "altera_compat")
     files += [join(cdir, f) for f in sorted(os.listdir(cdir)) if f.endswith(HDL)]

@@ -24,7 +24,9 @@ module altdpram #(
     parameter         intended_device_family = "Cyclone V",
     parameter         lpm_type       = "altdpram",
     parameter         lpm_hint       = "UNUSED",
-    parameter         use_eab        = "OFF"
+    parameter         use_eab        = "OFF",
+    parameter         power_up_uninitialized = "FALSE",   // accepted, ignored (Saturn's SH7604_mem.sv)
+    parameter integer byte_size      = 8
 ) (
     input  wire [width-1:0]         data,
     input  wire [widthad-1:0]       wraddress,
@@ -37,6 +39,9 @@ module altdpram #(
     input  wire                     outclocken,
     input  wire [width_byteena-1:0] byteena,
     input  wire                     aclr,
+    input  wire                     rdaddressstall,   // Saturn's mlab wrappers connect these; a stall
+    input  wire                     wraddressstall,   // is never asserted in any core here, so ignored
+    input  wire                     sclr,             // synchronous clear of the output register: unused here
     output wire [width-1:0]         q
 );
     localparam integer BE = width / width_byteena;

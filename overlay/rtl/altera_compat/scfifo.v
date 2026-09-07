@@ -28,8 +28,10 @@ module scfifo #(
     output wire                  full,
     output wire                  almost_full,
     output wire                  almost_empty,
-    output wire [lpm_widthu-1:0] usedw
+    output wire [lpm_widthu-1:0] usedw,
+    output wire [1:0]            eccstatus   // no ECC here; Saturn's wrappers connect it
 );
+    assign eccstatus = 2'b00;
     reg [lpm_width-1:0] mem [0:lpm_numwords-1];
     reg [lpm_widthu:0] wp = 0, rp = 0;          // one extra bit: full/empty distinction
     wire [lpm_widthu:0] cnt = wp - rp;
@@ -40,11 +42,18 @@ module scfifo #(
     assign almost_empty = (cnt <= almost_empty_value);
     wire do_wr = wrreq && (!full || overflow_checking == "OFF");
     wire do_rd = rdreq && (!empty || underflow_checking == "OFF");
+    // The pointers take the asynchronous clear; the storage must not, or Vivado
+    // refuses to infer a RAM ("sensitive to asynchronous reset") and dissolves it
+    // into registers -- a 128 Kbit CD-audio FIFO failed synthesis that way. A
+    // write during clear is harmless: the pointers restart at zero anyway.
+    always @(posedge clock) begin
+        if (do_wr && !aclr && !sclr) mem[wp[lpm_widthu-1:0]] <= data;
+    end
     always @(posedge clock or posedge aclr) begin
         if (aclr) begin wp <= 0; rp <= 0; end
         else if (sclr) begin wp <= 0; rp <= 0; end
         else begin
-            if (do_wr) begin mem[wp[lpm_widthu-1:0]] <= data; wp <= wp + 1'b1; end
+            if (do_wr) wp <= wp + 1'b1;
             if (do_rd) rp <= rp + 1'b1;
         end
     end

@@ -1,0 +1,59 @@
+# Sega Mega Drive / Genesis on UltraScale+ -- source list for the overlay, in
+# MiSTeX's convention (sourcedirs scanned, quartus-listed files left out,
+# vivado-listed files are the replacements). MiSTeX-ports has no port of this
+# core; upstream is MiSTer-devel/Genesis_MiSTer cloned to cores/MegaDrive/upstream.
+# bram.vhd / mlab.vhd wrap altsyncram / altdpram and are served by
+# overlay/rtl/altera_compat. jt12/alt and jt12/dac are not in jt12.qip.
+mainfile: Genesis.sv
+
+use-template-sys: True
+
+# .v files that declare variables inside unnamed blocks: SystemVerilog in a .v file.
+sv-as-v:
+  - fourway.v
+  - genesis_lpf.v
+  - audio_iir_filter.v
+  - jt12_top.v
+  - jt12_mod.v
+  - jt12_kon.v
+  - jt12_exprom.v
+  - jt12_decim.v
+  - jt12_comb.v
+  - jt12_interpol.v
+
+sourcedirs:
+  - sys
+  - upstream/rtl
+  - upstream/rtl/T80
+  - upstream/rtl/FX68K
+  - upstream/rtl/SVP
+  - upstream/rtl/jt89
+  - upstream/rtl/jt12
+  - upstream/rtl/jt12/mixer
+  - upstream/rtl/jt12/adpcm
+
+quartus:
+  sourcefiles:
+    - upstream/rtl/pll.v
+    - upstream/rtl/sdram.sv
+    # always_comb writes to nets; Vivado wants variables (patched copy in rtl/).
+    - upstream/rtl/cheatcodes.sv
+    - upstream/rtl/lightgun.sv
+    - upstream/rtl/system.sv
+    - upstream/rtl/T80/T80pa.vhd
+    - upstream/rtl/T80/T80s.vhd
+    - upstream/rtl/bram.vhd
+    - upstream/rtl/T80/T80.vhd
+
+vivado:
+  sourcefiles:
+    - rtl/pll_0002-xilinxusp.v
+    - rtl/pll.v
+    - rtl/sdram.sv
+    - rtl/cheatcodes.sv
+    - rtl/lightgun.sv
+    - rtl/system.sv
+    - rtl/T80/T80pa.vhd
+    - rtl/T80/T80s.vhd
+    - rtl/bram.vhd
+    - rtl/T80/T80.vhd

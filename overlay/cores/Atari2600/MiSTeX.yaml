@@ -1,0 +1,76 @@
+# Atari2600 on UltraScale+ -- source list for the overlay, in MiSTeX's convention:
+# sourcedirs are scanned, quartus-listed files are Altera IP left out of the Vivado
+# build, vivado-listed files are the replacements. MiSTeX-ports has no Atari2600 port;
+# upstream is MiSTer-devel/Atari2600_MiSTer cloned to cores/Atari2600/upstream. Intel cells
+# the RTL instantiates are served by overlay/rtl/altera_compat.
+mainfile: Atari2600.sv
+
+# The core is on the 2020 MiSTer framework (hps_io.v with a conf_str port and an
+# STRLEN parameter, joystick_analog_* names); MiSTeX's Template sys is the current
+# one and does not match, so this fit uses the core's own upstream/sys with three
+# files patched in the overlay (hq2x.sv: Result declared reg; sd_card.sv likewise;
+# video_mixer.sv: R_in/G_in/B_in declared at module scope, not inside an unnamed
+# generate branch). Note: the maintained MiSTer 2600 is inside the Atari7800 core
+# (cart2600.sv / banks2600.sv / detect2600.sv); this core was last touched 2022-01.
+use-template-sys: False
+
+# SystemVerilog in .v files (declarations in unnamed blocks), as the Game Boy's lcd.v
+sv-as-v:
+  - hps_io.v
+
+sourcedirs:
+  - upstream/sys
+  - upstream/rtl
+  - upstream/rtl/T65
+  - upstream/rtl/TIA
+
+# Four files instantiate entities as `label: work.X` (no `entity` keyword), which
+# Quartus accepts and Vivado does not; patched copies say `entity work.X`.
+quartus:
+  sourcefiles:
+    - upstream/rtl/pll/pll_0002.v
+    - upstream/rtl/A2601top.vhd
+    - upstream/rtl/A2601Core.vhd
+    - upstream/rtl/TIA/TIA.vhd
+    - upstream/rtl/A6532.vhd
+    - upstream/sys/hq2x.sv
+    - upstream/sys/sd_card.sv
+    - upstream/sys/video_mixer.sv
+    - upstream/sys/ddr_svc.sv
+    # board-side blocks in the core's own sys/ (the template flow skips these; with
+    # use-template-sys: False the whole directory is scanned)
+    - upstream/sys/f2sdram_safe_terminator.sv
+    - upstream/sys/arcade_video.v
+    - upstream/sys/sys_top.v
+    - upstream/sys/sysmem.sv
+    - upstream/sys/hdmi_config.sv
+    - upstream/sys/alsa.sv
+    - upstream/sys/i2s.v
+    - upstream/sys/spdif.v
+    - upstream/sys/audio_out.v
+    - upstream/sys/ltc2308.sv
+    - upstream/sys/mcp23009.sv
+    - upstream/sys/osd.v
+    - upstream/sys/vga_out.sv
+    - upstream/sys/yc_out.sv
+    - upstream/sys/pll_hdmi.v
+    - upstream/sys/pll_audio.v
+    - upstream/sys/pll_cfg.v
+    - upstream/sys/pll_hdmi_adj.vhd
+    - upstream/sys/ascal.vhd
+    - upstream/sys/altera_pll_reconfig_core.v
+    - upstream/sys/altera_pll_reconfig_top.v
+    - upstream/sys/pll_hdmi_0002.v
+    - upstream/sys/pll_audio_0002.v
+
+vivado:
+  sourcefiles:
+    - rtl/pll_0002-xilinxusp.v
+    - rtl/A2601top.vhd
+    - rtl/A2601Core.vhd
+    - rtl/TIA/TIA.vhd
+    - rtl/A6532.vhd
+    - sys/hq2x.sv
+    - sys/sd_card.sv
+    - sys/video_mixer.sv
+    - sys/ddr_svc.sv

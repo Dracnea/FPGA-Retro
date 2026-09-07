@@ -1,0 +1,49 @@
+# PC Engine / TurboGrafx-16 (+ CD) on UltraScale+ -- source list for the overlay.
+# MiSTeX-ports has no port; upstream is MiSTer-devel/TurboGrafx16_MiSTer cloned to
+# cores/TurboGrafx16/upstream. dpram.vhd wraps altsyncram and the CD FIFOs wrap
+# scfifo (overlay/rtl/altera_compat). The .mif initialisers (palette, voltab)
+# are left out (see quartus:); the compat altsyncram does not load init_file,
+# which does not change the fit.
+mainfile: TurboGrafx16.sv
+
+use-template-sys: True
+
+# .v files that declare variables inside unnamed blocks: SystemVerilog in a .v file.
+sv-as-v:
+  - sdram.v
+  - xe1ap.v
+
+sourcedirs:
+  - sys
+  - upstream/rtl
+  - upstream/rtl/HUC6280
+  - upstream/rtl/cd
+
+quartus:
+  sourcefiles:
+    - upstream/rtl/pll.v
+    - upstream/rtl/sdram.v
+    # .mif initialisers (CONTENT and BEGIN on separate lines, which core-fit's
+    # converter does not parse); the compat altsyncram ignores init_file anyway,
+    # so leaving them out changes nothing in the fit.
+    - upstream/rtl/HUC6280/voltab.mif
+    - upstream/rtl/huc6260_palette_init.mif
+    - upstream/rtl/arcade.sv
+    - upstream/rtl/cheatcodes.sv
+    - upstream/rtl/mb128.sv
+    - upstream/rtl/HUC6280/psg.vhd
+    - upstream/rtl/huc6270.vhd
+
+vivado:
+  sourcefiles:
+    - rtl/pll_0002-xilinxusp.v
+    - rtl/pll.v
+    - rtl/sdram.v
+    - rtl/arcade.sv
+    - rtl/cheatcodes.sv
+    - rtl/mb128.sv
+    - rtl/HUC6280/psg.vhd
+    - rtl/huc6270.vhd
+    # MiSTer's audio filter: the top instantiates IIR_filter itself, and core-fit
+    # leaves sys/iir_filter.v to the board side, so it is listed here.
+    - rtl/iir_filter.v

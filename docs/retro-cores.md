@@ -8,6 +8,10 @@ for the `xcu55n` unless a `xcvu33p` column says otherwise.
 
 Everything under "measured" was produced by `tools/core-fit.py` on 2026-09-05
 with Vivado 2026.1; everything else is read from the upstream sources named.
+**Second pass (2026-09-07):** Saturn, Mega Drive, PC Engine, Master System,
+Neo Geo, Lynx, WonderSwan, Atari 7800/2600, C64, Amstrad and Amiga fitted the
+same way, with what each needs to load and play through the GUI —
+[retro-cores-second-pass.md](retro-cores-second-pass.md).
 
 ## The three things every core needs from these cards
 

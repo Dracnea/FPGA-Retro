@@ -1,0 +1,53 @@
+# Atari7800 on UltraScale+ -- source list for the overlay, in MiSTeX's convention:
+# sourcedirs are scanned, quartus-listed files are Altera IP left out of the Vivado
+# build, vivado-listed files are the replacements. MiSTeX-ports has no Atari7800 port;
+# upstream is MiSTer-devel/Atari7800_MiSTer cloned to cores/Atari7800/upstream. Intel cells
+# the RTL instantiates are served by overlay/rtl/altera_compat.
+mainfile: Atari7800.sv
+
+use-template-sys: True
+
+# the top includes sys/emu_ports.vh, which MiSTeX's Template sys lacks: a copy is in sys/
+
+sourcedirs:
+  - sys
+  - upstream/rtl
+  - upstream/rtl/6502
+  - upstream/rtl/t65
+  - upstream/rtl/RIOT
+  - upstream/rtl/Maria
+  - upstream/rtl/Minnie
+  - upstream/rtl/Pokey
+  - upstream/rtl/jt51
+  - upstream/rtl/jt51/filter
+  - upstream/rtl/arm7tdmi
+  - upstream/rtl/palettes
+
+quartus:
+  sourcefiles:
+    - upstream/rtl/banks2600.sv
+    - upstream/rtl/pll/pll_0002.v
+    - upstream/rtl/sdram.sv
+    # TIA.sv writes five plain `output`s from always_ff (Quartus accepts, Vivado does not)
+    - upstream/rtl/TIA.sv
+    # the 2600 bank enum is a file-scope typedef shared across two files: a package here
+    - upstream/rtl/detect2600.sv
+    - upstream/rtl/cart2600.sv
+    - upstream/rtl/paddles.sv
+    - upstream/rtl/top.sv
+    - upstream/rtl/video_mixer_plus.sv
+
+vivado:
+  sourcefiles:
+    - rtl/banks2600.sv
+    - rtl/pll_0002-xilinxusp.v
+    - rtl/sdram.sv
+    - rtl/TIA.sv
+    - rtl/cart2600_pkg.sv
+    - rtl/detect2600.sv
+    - rtl/cart2600.sv
+    - rtl/paddles.sv
+    - rtl/top.sv
+    - rtl/video_mixer_plus.sv
+    # ltc2308_tape lives in the core's own (newer) sys/ltc2308.sv, not MiSTeX's Template sys
+    - rtl/ltc2308_tape.sv
