@@ -100,6 +100,11 @@ There is no open out-of-order PowerPC core of that class to start from
 the PS2's, and the MiSTer developers' view — a full-time job for a team — is
 the right one. Dolphin on the host is the answer. Neither PS2 nor GameCube
 gets a row in the measured table because there is no RTL to measure.
+[gamecube-hardware-study.md](gamecube-hardware-study.md) (2026-09-07) is the
+board, chip and documentation survey behind this paragraph — sources
+ranked, the sizing scaled from the N64 and PSX fits, the clock problem with
+numbers, and the order a recreation would be built in — as
+[ps2-hardware-study.md](ps2-hardware-study.md) is for the PS2.
 
 ## What it took to get the four cores through Vivado
 
