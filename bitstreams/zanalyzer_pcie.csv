@@ -1,5 +1,5 @@
-config,None,data_width,372
-config,None,storage_width,372
+config,None,data_width,392
+config,None,storage_width,392
 config,None,depth,1024
 config,None,samplerate,1000000000000
 config,None,subsampler_width,16
@@ -21,3 +21,5 @@ signal,0,usphbmpciephy_s_axis_rq_tready_raw,4
 signal,0,usphbmpciephy_m_axis_rc_tvalid_raw,1
 signal,0,usphbmpciephy_link_status_sys_sig,1
 signal,0,pcie_rst,1
+signal,0,usphbmpciephy_cfg_function_status_sys_sig,16
+signal,0,usphbmpciephy28,4

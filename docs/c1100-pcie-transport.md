@@ -227,7 +227,37 @@ work; the fault is confined to the request/completion path between the hard
 IP's CQ/CC interfaces and the wishbone bridge.** The capture of a real BAR0
 read (which needs the root rescan first) is the next measurement.
 
-Until that capture has run, every hardware claim below the enumeration section for
+**The capture, 2026-09-07 19:43 (`build/pcie_scope/20260907-194326`, after
+the root rescan onto the diagnostic image).** Both analyzers armed — pcie
+on CQ `tvalid` rising, sys on the wishbone master's `cyc` — then one write
+and one read through the driver: the read returned `ffffffff`, and
+**neither analyzer triggered.** Repeated with an immediate trigger under
+continuous traffic (103,630 read+write pairs during the 1024-sample window
+and 1.75 million writes in total): CQ `tvalid`, CC `tvalid`, RQ `tvalid`
+and RC `tvalid` are 0 in every sample, and the scratch register read over
+the UART afterwards is still `0x12345678`. **No request ever reaches the
+hard block's completer-request interface.** And the root port's *secondary*
+status — which the earlier dumps did not include — reads `<MAbort+`:
+Received Master Abort, i.e. the endpoint answered with Unsupported
+Request. So the integrated block itself is refusing these requests on
+arrival, before any user logic, while at the same time the host's config
+accesses work (BAR readback, MSI Enable took) and the PHY reports L0, gen3
+x4, DL up (`0x20ad` decoded with the CSR's field layout).
+
+PG213 lists what makes the block answer a memory request itself: the target
+BAR not enabled, Memory Space Enable clear in *its* view of the function,
+the function in D3, or an FLR pending. None of those was observable from
+the first diagnostic image, which is why the second one (below) publishes
+the block's own `cfg_function_status`, power state, FLR, error, message and
+NP-credit outputs as CSRs (`zhardip_*`, `tools/pcie-hardip.py`) and counts
+CQ beats in hardware.
+
+One bug found on the way, harmless here: LitePCIe's `pcie_phy_phy_bus_master_enable`
+CSR is assigned the whole 16-bit `cfg_function_status`, so it reports bit 0
+(I/O Space Enable), not bit 2 (Bus Master Enable). It reads 0 on this host
+with `BusMaster+` set.
+
+Until the block's own status has been read, every hardware claim below the enumeration section for
 `c1100_hps_test`, `c1100_hps_video_test` and `c1100_ps2_iop` stands
 unverified, and the PS2 IOP `hw-test.sh` output of 2026-09-07 (POST FF,
 `cpu_error` 1, counts 0xffffffff) is the all-ones read, not an IOP result.
