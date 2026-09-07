@@ -104,7 +104,30 @@ card: JTAG-load a video bitstream (default the pattern generator below),
 rescan PCIe, load the driver, enable the sink, run retroview headless for N
 seconds, and leave `session.frm1`, `session.avi`, `shots/`, `contact.png` and
 the card's `video_dims / video_frames / video_drops` before and after in
-`build/video/<timestamp>/`. Run 2026-09-07 with the pattern-generator image:
+`build/video/<timestamp>/`.
+
+**Verified on hardware, 2026-09-07 22:14** (`build/video/20260907-221426`,
+the rebuilt `c1100_hps_video_test.bit`, its own driver):
+
+```
+retroview: shown 600, parsed 600, dropped 0, resyncs 0, discarded 899520 B,
+           bad headers 0, transport 738197504 B in 90112 chunks
+video_dims 01e00280 (640x480)   video_frames +618 over the run   video_drops 0 -> 1
+```
+
+600 frames in the 10 s the script asked for, at the generator's 59.5 Hz;
+738 MB moved card→host over the DMA ring in 90,112 buffers of 8 KiB; the
+parser threw away 899,520 bytes once, the tail of the frame that was in
+flight when the viewer attached, and resynchronised on the next header;
+the sink counted one drop, the frame it truncated while the ring was
+being set up. The contact sheet shows the five bars with the bright bar
+walking across; the AVI is 640x480, 59.5 fps, 600 JPEG frames of ~8.7 KB.
+This is the first picture off the card. The first run of the same script
+an hour earlier received nothing: the driver loaded was the transport
+build's, whose DMA registers are at other addresses in this image
+(`c1100-pcie-transport.md`, "the driver must match the image").
+
+The earlier attempt on 2026-09-07 17:24 with the pattern-generator image:
 the load, rescan and driver went as expected and `video_enable` was written,
 but `video_dims`, `video_frames` and `video_drops` all read `0xffffffff` and
 no bytes arrived on the DMA — the same all-ones BAR0 reads as every other
