@@ -88,6 +88,33 @@ display session on this host; it is the same code path as the dummy driver).
 Install on any machine: `host/viewer/README.md` (a venv and `pip install -e .`;
 this host lacks ensurepip, and the README says how to work around it).
 
+## Capture for review: `retroview --shots/--contact/--video`, `tools/video-capture.sh`
+
+Added 2026-09-07 so that what a core draws can be judged by someone who was
+not at the screen — including an agent working over ssh with no display,
+which is how this repo is developed. `retroview` can save every Nth frame as
+PNG, tile them into a contact sheet, and write an MJPEG AVI, all from its own
+code (`host/viewer/retroview/capture.py`: pygame's JPEG/PNG encoders and a
+RIFF writer; nothing else is needed on the machine). Verified headless on the
+synthetic source; details and the alpha bug it found are in
+`host/viewer/README.md`.
+
+`tools/video-capture.sh` (root, for the PCIe part) does the whole thing on the
+card: JTAG-load a video bitstream (default the pattern generator below),
+rescan PCIe, load the driver, enable the sink, run retroview headless for N
+seconds, and leave `session.frm1`, `session.avi`, `shots/`, `contact.png` and
+the card's `video_dims / video_frames / video_drops` before and after in
+`build/video/<timestamp>/`. Not yet run: it needs root and the card is on the
+PS2 IOP image.
+
+What this cannot show yet: a game. No core has been placed in a board target
+with `sys_top` and the memory bridge (items 3-4 of the list in
+`host-gui-compatibility.md`), so the only picture the card can produce today
+is the generator's colour bars. The PS2 in particular is only its IOP
+(`ps2-iop-bringup.md`): no EE, VUs or GS, so no PS2 title can run on the card
+and there is nothing PS2-shaped to screenshot. The first real pictures will
+be from the fitted 8/16-bit cores once the board target exists.
+
 ## Test bitstream: `overlay/mistex_boards/c1100_hps_video_test.py`
 
 The HPS transport test (`c1100_hps_test`) plus the pattern generator and the

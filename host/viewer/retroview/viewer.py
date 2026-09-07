@@ -2,12 +2,14 @@
 from __future__ import annotations
 import os, time
 from .stream import Frm1Parser, Frame
+from .capture import ShotSink
 
 
 class Viewer:
     def __init__(self, transport, window=(1280, 960), scale="integer", filt="nearest",
-                 title="retroview", headless=False, max_frames=0, screenshot=None):
+                 title="retroview", headless=False, max_frames=0, screenshot=None, sinks=()):
         self.transport = transport
+        self.sinks = list(sinks)          # capture.ShotSink / capture.MjpegAvi: get every parsed frame
         self.window, self.scale_mode, self.filter = window, scale, filt
         self.title, self.headless, self.max_frames, self.screenshot = title, headless, max_frames, screenshot
         self.parser = Frm1Parser()
@@ -77,6 +79,8 @@ class Viewer:
                     self.parser.feed(d)
                     for f in self.parser.frames():
                         newest = f
+                        for sink in self.sinks:
+                            sink.add(pg, f)
                 if newest is not None:
                     self._last = newest
                     last_surf = self._surface(pg, newest)
@@ -109,6 +113,10 @@ class Viewer:
         finally:
             if last_surf is not None:
                 self._shot(pg, last_surf)
+            for sink in self.sinks:
+                out = sink.close(pg) if isinstance(sink, ShotSink) else sink.close()
+                if out:
+                    print(f"retroview: wrote {out}")
             self.transport.close()
             pg.quit()
         return 0 if self.rendered or not self.max_frames else 1

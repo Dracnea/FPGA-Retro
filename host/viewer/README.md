@@ -43,6 +43,28 @@ Options: `--scale integer|aspect`, `--filter nearest|linear`, `--window WxH`,
 `--headless --frames N --screenshot out.png` for tests, and for the synthetic
 source `--size WxH --fps F --synth-drop N --synth-mode-change N`.
 
+## Capture: screenshots, a contact sheet, a video file
+
+For review after the fact, or by someone who is not at the screen:
+
+```sh
+.venv/bin/retroview --shots shots/ --shot-every 60 --contact contact.png --video session.avi
+```
+
+- `--shots DIR --shot-every N`: every Nth frame as `DIR/frame-<number>.png`
+  at the core's own resolution.
+- `--contact PNG`: on exit, the saved frames tiled into one image with frame
+  numbers (at most 36, thinned evenly if there are more).
+- `--video AVI [--video-fps F] [--video-every N] [--video-quality Q]`: an
+  MJPEG AVI written by `retroview/capture.py` itself — no ffmpeg or encoder
+  library on the machine, and every player opens it. About 10 KB per 640x480
+  frame of flat colour, 30-60 KB for game video.
+
+Capture sees every parsed frame, not just the ones the window showed, so it
+works headless and a fast replay still yields a complete file. To convert an
+earlier `--record` stream: `--transport file --file session.frm1 --headless
+--video session.avi`.
+
 ## Transports
 
 | name | what | state |
@@ -90,6 +112,15 @@ size change between frames as a normal mode change.
   exact FRM1 size), replay it: 33 parsed, 0 resyncs; `--loop` runs on.
 - `--transport windows` and a missing device node both fail with one clear
   line and a non-zero exit.
+- 2026-09-07, capture: `tests/test_capture.py` (4 more tests: AVI structure
+  parsed back byte for byte, every-Nth, shots and contact sheet geometry,
+  the CLI end to end) — 12 pass. 180 synthetic 640x480 frames headless gave
+  six PNGs, a contact sheet whose tiles show the bars and the moving stripe,
+  and a 1.8 MB AVI whose first JPEG decodes to the expected bar colours
+  (192,192,192 at the first bar, 16,16,16 at the last). A first version wrote
+  black tiles and transparent PNGs: the X byte of `0x00RRGGBB` is alpha 0
+  through pygame's `BGRA`, which the window path had been hiding with
+  `convert()`. The capture path converts too now.
 
 "Shown" is lower than "parsed" when the source is faster than real time (a
 replay, or `--fps 240`): the viewer drains everything available each loop and

@@ -1,6 +1,7 @@
 import argparse, sys
 from .transport import open_transport, Recorder
 from .viewer import Viewer
+from .capture import ShotSink, MjpegAvi
 
 
 def size(s):
@@ -25,6 +26,15 @@ def main(argv=None):
     ap.add_argument("--headless", action="store_true", help="SDL dummy driver; with --frames and --screenshot for tests")
     ap.add_argument("--frames", type=int, default=0, help="exit after this many frames were shown")
     ap.add_argument("--screenshot", help="save the last frame here on exit")
+    cap = ap.add_argument_group("capture (every parsed frame, window or headless)")
+    cap.add_argument("--shots", metavar="DIR", help="save every Nth frame as DIR/frame-<number>.png")
+    cap.add_argument("--shot-every", type=int, default=60, metavar="N", help="with --shots: interval in frames (default 60)")
+    cap.add_argument("--contact", metavar="PNG", help="with --shots: tile the saved frames into one PNG on exit")
+    cap.add_argument("--contact-cols", type=int, default=6)
+    cap.add_argument("--video", metavar="AVI", help="record every frame as an MJPEG AVI (opens in any player)")
+    cap.add_argument("--video-fps", type=float, default=0, help="frame rate written in the AVI header (default: --fps for synth, else 60)")
+    cap.add_argument("--video-every", type=int, default=1, metavar="N", help="with --video: keep every Nth frame")
+    cap.add_argument("--video-quality", type=int, default=90)
     a = ap.parse_args(argv)
 
     if a.transport == "file" and not a.file:
@@ -34,8 +44,16 @@ def main(argv=None):
                        mode_change_every=a.synth_mode_change, drop_every=a.synth_drop)
     if a.record:
         t = Recorder(t, a.record)
+    sinks = []
+    if a.shots:
+        sinks.append(ShotSink(a.shots, every=a.shot_every, contact=a.contact, contact_cols=a.contact_cols))
+    elif a.contact:
+        ap.error("--contact needs --shots")
+    if a.video:
+        fps = a.video_fps or (a.fps if a.transport == "synth" else 60.0)
+        sinks.append(MjpegAvi(a.video, fps=fps, quality=a.video_quality, every=a.video_every))
     v = Viewer(t, window=a.window, scale=a.scale, filt=a.filter, headless=a.headless,
-               max_frames=a.frames, screenshot=a.screenshot)
+               max_frames=a.frames, screenshot=a.screenshot, sinks=sinks)
     try:
         rc = v.run()
     except NotImplementedError as e:
