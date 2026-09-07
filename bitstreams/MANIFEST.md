@@ -20,3 +20,4 @@ a warm reboot) before the host sees the new device.
 Not here: the out-of-context core fits in `build/fit_*` produce checkpoints, not
 bitstreams — a core becomes a bitstream only once it sits in a board target with
 the video sink and host interface (`docs/retro-cores.md`).
+| `c1100_pcie_diag.bit` | `f0f1e6fd8a61606595b6f11d36b65c76` | xcu55n-fsvh2892-2LV-e | `overlay/mistex_boards/c1100_pcie_diag.py` — the transport design plus UARTbone on FPGA UART 0 (BJ41/BK41, shows up as `/dev/ttyUSB2`, 115200) and two LiteScope analyzers (`zanalyzer_pcie.csv`, `zanalyzer_sys.csv` beside it); pcie_* CSR addresses identical to the transport image | Built 2026-09-07: WNS −0.006 ns on two paths inside the pcie-domain analyzer's own trigger memory, nothing in the design under test. **Loaded the same day:** identifier, scratch write/read, PHY link status and both analyzers all work over the UART (`tools/uart-probe.sh`, `tools/pcie-scope.py`); `docs/c1100-pcie-transport.md`. |

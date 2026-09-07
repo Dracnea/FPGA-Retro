@@ -179,7 +179,55 @@ reads, then dumps `DevSta`/`UESta`/`CESta` on both ends and the kernel log:
 | unsupported request | reads fast; endpoint `DevSta UnsupReq+`, root port `Status: <MAbort+` | the endpoint rejected the BAR hit: BAR/aperture mismatch between the IP and the depacketizer |
 | completion with data ff | reads fast; no error bits anywhere | the endpoint answered: LiteX's wishbone timeout returned ff, so the on-chip address decode never selected the CSR bridge |
 
-Until that has run, every hardware claim below the enumeration section for
+Result of that run (2026-09-07, `build/pcie_diag/20260907-180309.log`, on
+the transport image itself): **the third case.** Every read completes in
+0.6 µs (1000 reads in 0.6 ms), through the driver and through `resource0`
+alike, and not one status bit is set afterwards on either end — endpoint
+`DevSta` clean, root port `DevSta`/`UESta`/`CESta`/`RootSta` clean, no
+`RxMA`, root port `Control: Mem+`. So the endpoint answers every read
+itself, fast, with all ones; writes are accepted and have no effect
+(scratch stays `ffffffff`); the DMA writer never delivers a byte and the
+MSI count stays 0. It is not the on-chip bus timeout either: that is
+1,000,000 sys cycles, 8 ms per read. Something between the hard IP's CQ
+interface and the wishbone bridge is producing a successful completion
+without performing the access. The LitePCIe these images were built with
+is upstream `0439d65` (2026-09-01), whose UltraScale+ path was rewritten in
+2026 (Verilog AXI-Stream adapters replaced by LiteX ones in February, the
+support wrapper removed, completion-descriptor and requester-descriptor
+fixes still landing in June and July), which is where the suspicion sits.
+
+**Diagnostic image, `c1100_pcie_diag.py`.** The transport design plus
+UARTbone on the card's FPGA UART 0 (BJ41/BK41, Corundum's `uart_txd[0]` /
+`uart_rxd[0]`, reaching the on-board FT4232H, whose channels are
+`/dev/ttyUSB1..3`; `tools/uart-probe.sh` finds the right one) and two
+LiteScope analyzers, one in the pcie domain on the hard IP's raw CQ/CC
+streams, one in sys on the PCIe wishbone master and the endpoint's
+request/completion streams. The pcie_* CSR addresses are unchanged from the
+transport image (the additions sort last), so the transport build's driver
+and csr.csv stay valid for the PCIe side. `tools/pcie-scope.py` arms both
+analyzers over the UART, performs one BAR0 read through PCIe, and decodes
+the CQ descriptor, the CC descriptor and the wishbone cycle it captured.
+Neither the UART nor the analyzers need root; only the PCIe rescan does.
+
+Its first build failed on the by-name `set_clock_groups` the transport
+target carries (`add_false_path_constraints_by_name("clkout", "clk100_p")`):
+with more modules in the design the MMCM output net is `crg_clkout`, so
+`No clocks matched 'clkout'` and this time Vivado stopped with
+`12-5201: cannot set the clock group when only one non-empty group
+remains`. The fourth build lost to that constraint. The diagnostic target
+removes it and declares the groups by MMCM pin, as the later targets do.
+
+Loaded 2026-09-07 (md5 `f0f1e6fd…`). Over the UART, without PCIe being
+re-enumerated: the identifier string reads `C1100 PCIe video transport x4
+gen3`, `ctrl_scratch` reads back what is written, `ctrl_bus_errors` is 0,
+the PHY reports link up, and an immediate-trigger capture on both
+analyzers shows `pcie_rst` 0, `user_lnk_up` 1, CQ `tready` 0xF, `sys_rst`
+0, MMCM locked. **So the sys domain, the CSR bus and the PHY status path all
+work; the fault is confined to the request/completion path between the hard
+IP's CQ/CC interfaces and the wishbone bridge.** The capture of a real BAR0
+read (which needs the root rescan first) is the next measurement.
+
+Until that capture has run, every hardware claim below the enumeration section for
 `c1100_hps_test`, `c1100_hps_video_test` and `c1100_ps2_iop` stands
 unverified, and the PS2 IOP `hw-test.sh` output of 2026-09-07 (POST FF,
 `cpu_error` 1, counts 0xffffffff) is the all-ones read, not an IOP result.
