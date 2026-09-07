@@ -22,7 +22,19 @@ cd "$(dirname "$0")/.."
 [[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 1; }
 USER_NAME=${SUDO_USER:-dracnea}
 USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
-SW=${LITEPCIE_SW:-$USER_HOME/MiSTeX-ports/build/c1100_pcie/software}
+
+# The LitePCIe kernel module hard-codes the CSR addresses of the image it was
+# generated with (csr.h), and the pcie_* blocks sit at different addresses in
+# different images (whatever sorts before them shifts them). So the driver has
+# to match the bitstream: each build directory carries its own software/.
+sw_for_bit() {   # $1 = bitstream path -> software dir of the build that made it
+    local n; n=$(basename "$1" .bit)
+    case $n in
+        c1100_pcie_video_transport) n=c1100_pcie ;;
+        c1100_pcie_diag)            n=c1100_pcie_diag ;;
+    esac
+    echo "${LITEPCIE_SW:-$USER_HOME/MiSTeX-ports/build/$n/software}"
+}
 FJTAG=${FJTAG:-$USER_HOME/.cache/fjtag-target/release/fjtag}
 BITS=("$@"); [[ ${#BITS[@]} -gt 0 ]] || BITS=(bitstreams/c1100_pcie_video_transport.bit)
 mkdir -p build/pcie_diag; chown "$USER_NAME" build/pcie_diag
@@ -56,7 +68,8 @@ clear_status() {
 
 for BIT in "${BITS[@]}"; do
     CSR=${BIT%.bit}.csr.csv
-    echo; echo "========== $(date -Is)  $BIT  md5 $(md5sum "$BIT" | cut -c1-32)"
+    SW=$(sw_for_bit "$BIT")
+    echo; echo "========== $(date -Is)  $BIT  md5 $(md5sum "$BIT" | cut -c1-32)  driver $SW/kernel/litepcie.ko"
     echo "== JTAG load"; as_user "$FJTAG" --load "$BIT" --no-serve || { echo "FAIL: load"; continue; }
     echo "== PCIe remove + rescan"
     rmmod litepcie 2>/dev/null

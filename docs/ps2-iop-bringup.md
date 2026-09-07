@@ -257,6 +257,39 @@ all-ones reads, [c1100-pcie-transport.md](c1100-pcie-transport.md)): md5
 inert-constraint signature in the log, `iop_*` CSR addresses unchanged.
 That is the image to run `hw-test.sh` against.
 
+## On silicon, 2026-09-07 22:04 — PASS
+
+`build/ps2_hw/20260907-220404.log`, the rebuilt image, BAR0 at
+`1801e000000`, link gen3 x4:
+
+```
+1. POST 00  post_count 0  reset 1  locked 1  heartbeat 0  cpu_error 0  mem_idle 1  rom_count 0
+2. heartbeat 0 / heartbeat 1        toggling
+3. loaded 4096 words ... rom_count 4096
+4. pad0 = 0x5A3C:  [0.000s] POST 00  [0.010s] POST AA (count 12)   PASS
+5. pad0 = 0xFFFF:  [0.000s] POST 00  [0.010s] POST EE (count 10)   stage 09 fails, as it must
+6. PASS PASS PASS PASS PASS
+7. POST AA  post_count 12  reset 0  locked 1  cpu_error 0  rom_count 32768
+```
+
+Twelve POST writes (01-06, 5a, 07-0A, AA) is exactly the simulated
+sequence; the whole boot test runs in under the 10 ms poll interval, as
+5.2 ms of console time should. The negative run proves the `iop_pad0` CSR
+reaches SIO2 on hardware: with nothing pressed the pad answers something
+other than `0x5A3C` and stage 09 reports EE after ten writes. So the IOP
+subsystem — R3000 core, memory mux, RAM and ROM in URAM, INTC, timers, the
+SPU2 stand-in with its work RAM, SIO2 and the CDVD stub — runs on the C1100
+at 36.875 MHz exactly as it did in xsim, and the fractional MMCM
+(DIVCLK 2 / MULT 22.125) locks. `rom_count` reads 32768 at the end because
+the tool streamed the 4096-word image eight times over the run.
+
+The `SoC Identifier` printed by the driver at the top of that log is `.`
+(the identifier read as `\x01`): the transport build's driver reads the
+identifier at the transport image's address, which in this image is
+`iop_reset`. Cosmetic there, but the same mismatch is fatal for DMA (see
+[c1100-pcie-transport.md](c1100-pcie-transport.md), "the driver must match
+the image"); `hw-test.sh` now loads the driver generated with this image.
+
 ## Loaded on the C1100, 2026-09-07
 
 The card came free (a power cut had reverted it to its flash image, which the

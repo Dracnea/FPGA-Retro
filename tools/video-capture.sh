@@ -29,7 +29,21 @@ CSR=${BIT%.bit}.csr.csv
 [[ -f $BIT && -f $CSR ]] || { echo "need $BIT and $CSR" >&2; exit 1; }
 USER_NAME=${SUDO_USER:-dracnea}
 USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
-SW=${LITEPCIE_SW:-$USER_HOME/MiSTeX-ports/build/c1100_pcie/software}
+
+# The LitePCIe kernel module hard-codes the CSR addresses of the image it was
+# generated with (csr.h), and the pcie_* blocks sit at different addresses in
+# different images (whatever sorts before them shifts them). So the driver has
+# to match the bitstream: each build directory carries its own software/.
+sw_for_bit() {   # $1 = bitstream path -> software dir of the build that made it
+    local n; n=$(basename "$1" .bit)
+    case $n in
+        c1100_pcie_video_transport) n=c1100_pcie ;;
+        c1100_pcie_diag)            n=c1100_pcie_diag ;;
+    esac
+    echo "${LITEPCIE_SW:-$USER_HOME/MiSTeX-ports/build/$n/software}"
+}
+SW=$(sw_for_bit "$BIT")
+[[ -f $SW/kernel/litepcie.ko ]] || { echo "no driver for this image: $SW/kernel/litepcie.ko (build it: make -C $SW/kernel)" >&2; exit 1; }
 FJTAG=${FJTAG:-$USER_HOME/.cache/fjtag-target/release/fjtag}
 OUT=build/video/$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"; chown -R "$USER_NAME" build/video

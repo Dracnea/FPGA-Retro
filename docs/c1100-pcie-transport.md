@@ -348,6 +348,24 @@ about the test loop (26 MB/s), not about the transport. Pacing the source
 or a zero-copy consumer is the next refinement; `retroview`'s litepcie
 transport is that consumer.
 
+**The driver must match the image.** LitePCIe's kernel module and
+`litepcie_util` are generated per build with the CSR addresses of that
+build (`csr.h`): the DMA table, enable and MSI registers are hard-coded.
+The pcie_* blocks do not sit at the same addresses in every image — LiteX
+allocates CSR pages in name order, so whatever sorts before `pcie_*`
+shifts them: `pcie_dma0` is at `0x1800` in the transport, diagnostic and
+PS2 images but at `0x2000` in the HPS test images. Loading the transport
+build's driver with `c1100_hps_video_test` (2026-09-07 22:04) gave a live
+sink (`video_dims` 640x480, frames counting, no drops) and a DMA writer
+that never started: the driver had programmed the table into
+`identifier_mem`. Each build directory now carries its own compiled
+`software/kernel/litepcie.ko`, and `video-capture.sh` / `pcie-diag.sh` /
+`hw-test.sh` load the one that matches the bitstream. Register-level tools
+(`csrw.py`, `iop_post.py`) are unaffected because they take addresses from
+the image's `csr.csv`. Pinning the pcie_* CSR pages to fixed indices in
+every C1100 target, so one driver serves all images, is the cleaner
+follow-up.
+
 Everything below the enumeration section for
 `c1100_hps_test`, `c1100_hps_video_test` and `c1100_ps2_iop` is being
 re-measured on images rebuilt with that BAR; the PS2 IOP `hw-test.sh`

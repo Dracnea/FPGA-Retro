@@ -22,7 +22,7 @@ LOG=build/ps2_hw/$(date +%Y%m%d-%H%M%S).log
 if [[ $EUID -ne 0 ]]; then echo "run with sudo (root is needed for the PCIe rescan and the driver)" >&2; exit 1; fi
 USER_NAME=${SUDO_USER:-dracnea}
 USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
-SW=${LITEPCIE_SW:-$USER_HOME/MiSTeX-ports/build/c1100_pcie/software}
+SW=${LITEPCIE_SW:-$USER_HOME/MiSTeX-ports/build/c1100_ps2_iop/software}   # the driver must match the image (csr.h)
 mkdir -p build/ps2_hw; chown "$USER_NAME" build/ps2_hw
 exec > >(tee "$LOG") 2>&1
 echo "== $(date -Is)  PS2 IOP hardware test, log $LOG"
