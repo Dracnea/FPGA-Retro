@@ -21,7 +21,7 @@ LTSSM = {0x00: "Detect.Quiet", 0x01: "Detect.Active", 0x02: "Polling.Active", 0x
          0x22: "Loopback_Active_Master", 0x23: "Loopback_Exit_Master", 0x24: "Loopback_Entry_Slave",
          0x25: "Loopback_Active_Slave", 0x26: "Loopback_Exit_Slave", 0x27: "Hot_Reset", 0x28: "Recovery_Equalization_Phase0",
          0x29: "Recovery_Equalization_Phase1", 0x2A: "Recovery_Equalization_Phase2", 0x2B: "Recovery_Equalization_Phase3"}
-PM = {0: "D0", 1: "D1", 2: "D2", 3: "D3hot"}
+PM = {0: "D0_uninitialized", 1: "D0_active", 2: "D1", 4: "D3hot"}   # PG213 cfg_function_power_state encoding
 
 
 def main():

@@ -257,7 +257,41 @@ CSR is assigned the whole 16-bit `cfg_function_status`, so it reports bit 0
 (I/O Space Enable), not bit 2 (Bus Master Enable). It reads 0 on this host
 with `BusMaster+` set.
 
-Until the block's own status has been read, every hardware claim below the enumeration section for
+**The block's own status, after the host re-enumerated the image
+(2026-09-07 20:13):** `cfg_function_status` `0x000e` (MSE 1, BME 1, INTx
+disabled — exactly the host's Command register), power state D0_active,
+LTSSM L0, gen3, x4, no FLR, no error output, no message received, NP
+credits granted, and **CQ beats still 0** while the host read `ffffffff`.
+Before re-enumeration the same registers read all-zero, so they do track
+the host's config writes. And the endpoint's own Device Status never sets
+Unsupported Request Detected after the reads, which it must if the block
+had refused them. So neither side records an error, the block sees no
+request, and the host gets all ones in 0.6 µs: **the strongest reading now
+is that the memory requests never reach the card at all.** Config accesses
+do (they set MSE, BAR0, MSI Enable), but config and memory take different
+routes through the host fabric.
+
+The suspect is the host's routing of the 32-bit window. The root bus
+`0000:c0` has a 32-bit window `b6c00000-b8dfffff` from ACPI; at boot the
+firmware used only its top for the two internal ports (`b8c00000`,
+`b8d00000`) and gave this port only a 64-bit prefetchable window
+(`1801e000000-180200fffff`) for the factory image's BARs. The 32-bit window
+`b6c00000-b6cfffff` was assigned by Linux at the first rescan. If the data
+fabric was not programmed to route that part of the window, reads return
+all ones with no PCIe error on either end, which is what is observed.
+`c1100_pcie_video_transport.bit` on 2026-09-05 was never read from, so
+this was never exercised before.
+
+**Differential experiment (third diagnostic build):** BAR0 becomes 64-bit
+prefetchable (Corundum's configuration on this card), so the kernel places
+it in the port's prefetchable window, which the firmware did route at boot.
+Same design otherwise. If reads then work, the transport was fine all
+along and the fix is that BAR type (or a warm reboot with the image loaded,
+so the firmware assigns the windows). `tools/pcie-diag.sh` now also clears
+and prints the root port's secondary status and shows `/proc/iomem` around
+the BARs.
+
+Until that has run, every hardware claim below the enumeration section for
 `c1100_hps_test`, `c1100_hps_video_test` and `c1100_ps2_iop` stands
 unverified, and the PS2 IOP `hw-test.sh` output of 2026-09-07 (POST FF,
 `cpu_error` 1, counts 0xffffffff) is the all-ones read, not an IOP result.

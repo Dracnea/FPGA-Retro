@@ -37,13 +37,14 @@ status_dump() {   # $1 = label
     echo "---- [$1] endpoint $ep"
     lspci -vv -s "${ep#0000:}" | grep -E 'Control:|Status:|DevSta|UESta|CESta|LnkSta:|Region 0|Kernel driver'
     echo "---- [$1] root port $rp"
-    lspci -vv -s "${rp#0000:}" | grep -E 'Status:|SecStatus|DevSta|UESta|CESta|LnkSta:|RootSta|ErrorSrc'
+    lspci -vv -s "${rp#0000:}" | grep -E 'Status:|Secondary status|DevSta|UESta|CESta|LnkSta:|RootSta|ErrorSrc|Memory behind|Prefetchable'
 }
 clear_status() {
     for d in $(lspci -D -n -d 10ee: | awk '{print $1}'); do
         rp=$(basename "$(readlink -f /sys/bus/pci/devices/$d/..)")
         for dev in "$d" "$rp"; do
             setpci -s "${dev#0000:}" STATUS=ffff 2>/dev/null                        # PCI status (RxMA, STA, ...)
+            setpci -s "${dev#0000:}" SEC_STATUS=ffff 2>/dev/null                    # bridge secondary status (RxMA from the link)
             setpci -s "${dev#0000:}" CAP_EXP+0a.w=000f 2>/dev/null                  # DevSta: CorrErr NonFatal Fatal UnsupReq
             if lspci -s "${dev#0000:}" -vv 2>/dev/null | grep -q 'Advanced Error Reporting'; then
                 setpci -s "${dev#0000:}" ECAP_AER+04.l=ffffffff 2>/dev/null     # UESta
@@ -91,6 +92,7 @@ PY
     insmod "$SW/kernel/litepcie.ko" && sleep 1 && chgrp plugdev /dev/litepcie0 && chmod 0660 /dev/litepcie0
     "$SW/user/litepcie_util" scratch_test 2>&1 | head -6
     status_dump "after driver reads"
+    echo "== /proc/iomem around the BARs"; grep -iE "$(lspci -vv -s "${EP#0000:}" | grep -oE 'Memory at [0-9a-f]+' | awk '{print $3}' | cut -c1-5 | paste -sd'|')" /proc/iomem | head
     echo "== kernel log"; dmesg | tail -12
 done
 echo; echo "== done; log $LOG"

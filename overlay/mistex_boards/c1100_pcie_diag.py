@@ -144,6 +144,18 @@ class PCIeDiagSoC(PCIeVideoSoC):
                     "-group [get_clocks -of_objects [get_pins MMCME4_ADV/CLKOUT0]] "
                     "-group [get_clocks clk100_p]")
 
+        # BAR0 as a 64-bit prefetchable BAR (Corundum's configuration on this
+        # card). Differential experiment: with a 32-bit non-prefetchable BAR the
+        # host placed BAR0 in a 32-bit window (b6c00000) that no device used at
+        # boot, and every read returned ff without either end flagging an
+        # error, while the block's own status showed no Unsupported Request.
+        # A 64-bit prefetchable BAR lands in the port's prefetchable window,
+        # which the firmware routed at boot for the factory image's BARs.
+        self.pcie_phy.update_config({
+            "pf0_bar0_64bit":        "true",
+            "pf0_bar0_prefetchable": "true",
+        })
+
         # CSR bus over the UART.
         self.add_uartbone("serial", baudrate=baudrate)
 
