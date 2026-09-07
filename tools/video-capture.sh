@@ -57,7 +57,7 @@ echo "== retroview headless, $SECS s"
 FRAMES=$(( SECS * 60 ))
 cd host/viewer
 as_user env SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy .venv/bin/retroview --transport litepcie --headless \
-    --frames "$FRAMES" --record "../../$OUT/session.frm1" --video "../../$OUT/session.avi" --video-fps 59.5 \
+    --frames "$FRAMES" --timeout 15 --record "../../$OUT/session.frm1" --video "../../$OUT/session.avi" --video-fps 59.5 \
     --shots "../../$OUT/shots" --shot-every 60 --contact "../../$OUT/contact.png" --screenshot "../../$OUT/last.png"
 cd ../..
 for r in video_dims video_frames video_drops; do echo -n "$r after: "; as_user tools/csrw.py --csr "$CSR" read $r; done

@@ -7,8 +7,10 @@ from .capture import ShotSink
 
 class Viewer:
     def __init__(self, transport, window=(1280, 960), scale="integer", filt="nearest",
-                 title="retroview", headless=False, max_frames=0, screenshot=None, sinks=()):
+                 title="retroview", headless=False, max_frames=0, screenshot=None, sinks=(), timeout=0.0):
         self.transport = transport
+        self.timeout = timeout            # seconds without any frame before giving up (0 = never)
+        self.timed_out = False
         self.sinks = list(sinks)          # capture.ShotSink / capture.MjpegAvi: get every parsed frame
         self.window, self.scale_mode, self.filter = window, scale, filt
         self.title, self.headless, self.max_frames, self.screenshot = title, headless, max_frames, screenshot
@@ -46,6 +48,7 @@ class Viewer:
         font = pg.font.Font(None, 22)
         clock = pg.time.Clock()
         t0 = time.monotonic(); shown_t = t0; shown_n = 0; fps_disp = 0.0; src_fps = 0.0; src_n0 = 0
+        last_frame_t = t0
         last_surf = None
         running = True
         try:
@@ -86,6 +89,12 @@ class Viewer:
                     last_surf = self._surface(pg, newest)
                     self.rendered += 1
                     shown_n += 1
+                    last_frame_t = time.monotonic()
+                elif self.timeout and time.monotonic() - last_frame_t > self.timeout:
+                    print(f"retroview: no frame for {self.timeout:g} s "
+                          f"({self.transport.stats.bytes} B received, {self.parser.stats.frames} frames parsed), giving up")
+                    self.timed_out = True
+                    running = False
 
                 # draw
                 screen.fill((0, 0, 0))
@@ -119,4 +128,6 @@ class Viewer:
                     print(f"retroview: wrote {out}")
             self.transport.close()
             pg.quit()
+        if self.timed_out:
+            return 1
         return 0 if self.rendered or not self.max_frames else 1

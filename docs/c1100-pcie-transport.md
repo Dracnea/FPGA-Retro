@@ -134,6 +134,56 @@ Link parameters read from sysfs:
 
 Link trained at the design's full target, gen3 x4, with no downshift.
 
+### 2026-09-07: BAR0 reads return 0xFFFFFFFF — the endpoint enumerates but no register is reachable
+
+The section above verified enumeration, link training and driver binding. It
+did **not** verify a register read: no `litepcie_util info` output was
+recorded, and none of the three images derived from this design had been
+loaded. Today two of them were (`c1100_ps2_iop.bit`, then
+`c1100_hps_video_test.bit`), with the same result on both:
+
+```
+litepcie 0000:c1:00.0: Version \xff\xff\xff...          (driver probe)
+SoC Identifier   : ����...                               (litepcie_util info)
+Write 0x12345678 to Scratch register:  Read: 0xffffffff  (litepcie_util scratch_test)
+video_dims / video_frames / video_drops : ffffffff        (tools/csrw.py)
+iop_status : ffffffff                                     (tools/ps2iop/iop_post.py)
+```
+
+Host side, identical to the 09-05 record: `10ee:9034`, BAR0 at `b6c00000`
+(128 K, inside the root port's window `b6c00000-b6cfffff`, assigned on
+rescan), `Control: Mem+ BusMaster+`, LnkSta 8 GT/s x4, MSI allocated,
+`litepcie` bound, no AER or link message in the kernel log. Config-space
+access therefore works (it is answered by the hard IP) and memory access
+to BAR0 does not (it is answered by the fabric). `c1100_pcie_video_transport.bit`
+itself has not been re-tested since 09-05 and was never read from, so as
+of today **no register read has ever succeeded on this card** — this is a
+bring-up defect in the base transport design, not a regression in the
+derived images.
+
+Ruled out from user space: the 100 MHz input (BK43/BK44 is the pin every
+working design on this card uses, Corundum's `clk_100mhz_1`); pin placement
+(`xilinx_c1100_io.rpt` shows the lanes on quad 227, refclk on `MGTREFCLK0_225`,
+and the link trained); the driver (`ctrl_scratch` reads ff through the
+driver's ioctl, the driver's own probe read the identifier as ff).
+
+Three cases remain, and they are distinguishable only from the root port's
+status registers, which need root. `tools/pcie-diag.sh` (run with sudo,
+default image the transport one) clears the status bits on both ends,
+reads BAR0 directly through `resource0` with the driver unloaded, times the
+reads, then dumps `DevSta`/`UESta`/`CESta` on both ends and the kernel log:
+
+| case | what the host sees | meaning |
+|---|---|---|
+| completion timeout | reads take ms each; root port `DevSta` CorrErr/NonFatal, `UESta` CmpltTO | the endpoint never answered: the CQ → sys crossing is stuck, i.e. the sys domain is not running or is held in reset |
+| unsupported request | reads fast; endpoint `DevSta UnsupReq+`, root port `Status: <MAbort+` | the endpoint rejected the BAR hit: BAR/aperture mismatch between the IP and the depacketizer |
+| completion with data ff | reads fast; no error bits anywhere | the endpoint answered: LiteX's wishbone timeout returned ff, so the on-chip address decode never selected the CSR bridge |
+
+Until that has run, every hardware claim below the enumeration section for
+`c1100_hps_test`, `c1100_hps_video_test` and `c1100_ps2_iop` stands
+unverified, and the PS2 IOP `hw-test.sh` output of 2026-09-07 (POST FF,
+`cpu_error` 1, counts 0xffffffff) is the all-ones read, not an IOP result.
+
 **Device node permissions.** The driver creates `/dev/litepcie0` as
 `root:root 0600`, so every tool needs root. `tools/99-litepcie.rules` relaxes
 this to the `plugdev` group, which makes iterating on measurements practical.

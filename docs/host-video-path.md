@@ -104,8 +104,14 @@ card: JTAG-load a video bitstream (default the pattern generator below),
 rescan PCIe, load the driver, enable the sink, run retroview headless for N
 seconds, and leave `session.frm1`, `session.avi`, `shots/`, `contact.png` and
 the card's `video_dims / video_frames / video_drops` before and after in
-`build/video/<timestamp>/`. Not yet run: it needs root and the card is on the
-PS2 IOP image.
+`build/video/<timestamp>/`. Run 2026-09-07 with the pattern-generator image:
+the load, rescan and driver went as expected and `video_enable` was written,
+but `video_dims`, `video_frames` and `video_drops` all read `0xffffffff` and
+no bytes arrived on the DMA — the same all-ones BAR0 reads as every other
+image on this card (see `c1100-pcie-transport.md`). The viewer waited for
+frames that never came, which is why `retroview` now has `--timeout` and the
+script passes 15 s. Nothing about the sink or the viewer's litepcie transport
+is established either way until BAR0 reads work.
 
 What this cannot show yet: a game. No core has been placed in a board target
 with `sys_top` and the memory bridge (items 3-4 of the list in

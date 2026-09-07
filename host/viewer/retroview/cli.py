@@ -26,6 +26,7 @@ def main(argv=None):
     ap.add_argument("--headless", action="store_true", help="SDL dummy driver; with --frames and --screenshot for tests")
     ap.add_argument("--frames", type=int, default=0, help="exit after this many frames were shown")
     ap.add_argument("--screenshot", help="save the last frame here on exit")
+    ap.add_argument("--timeout", type=float, default=0, metavar="SEC", help="exit 1 if no frame arrives for this long (0 = wait forever)")
     cap = ap.add_argument_group("capture (every parsed frame, window or headless)")
     cap.add_argument("--shots", metavar="DIR", help="save every Nth frame as DIR/frame-<number>.png")
     cap.add_argument("--shot-every", type=int, default=60, metavar="N", help="with --shots: interval in frames (default 60)")
@@ -53,7 +54,7 @@ def main(argv=None):
         fps = a.video_fps or (a.fps if a.transport == "synth" else 60.0)
         sinks.append(MjpegAvi(a.video, fps=fps, quality=a.video_quality, every=a.video_every))
     v = Viewer(t, window=a.window, scale=a.scale, filt=a.filter, headless=a.headless,
-               max_frames=a.frames, screenshot=a.screenshot, sinks=sinks)
+               max_frames=a.frames, screenshot=a.screenshot, sinks=sinks, timeout=a.timeout)
     try:
         rc = v.run()
     except NotImplementedError as e:

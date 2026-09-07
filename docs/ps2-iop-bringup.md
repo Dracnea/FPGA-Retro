@@ -262,12 +262,20 @@ loaded over JTAG:
 [load] STAT=0x109079fc  DONE=1 EOS=1 CRC_ERR=0
 ```
 
-Configuration is verified on silicon: DONE and EOS high, no CRC error. The
-PCIe side is not yet run — dropping the stale `5058` identity, the rescan and
-`litepcie.ko` need root, which the loading session did not have. Everything
-from that point is one command, `sudo tools/ps2iop/hw-test.sh`, which does the
-root part and then runs the sequence below as the invoking user, logging to
-`build/ps2_hw/`. It has not been run; the results will replace this paragraph.
+Configuration is verified on silicon: DONE and EOS high, no CRC error.
+`sudo tools/ps2iop/hw-test.sh` (the root part — stale `5058` identity
+dropped, rescan, `litepcie.ko` — then the sequence below as the invoking
+user, logged to `build/ps2_hw/`) was run the same day. **Result: no IOP
+result.** Every CSR read, `iop_status` included, returned `0xffffffff`, so the
+log shows POST FF, `cpu_error` 1 and counts of 4294967295 — the value of a
+BAR0 read that the fabric did not answer, not anything the IOP did. The
+identifier and scratch registers of the transport itself read the same, and
+so does the HPS video image loaded afterwards. This is a defect in the PCIe
+transport that every C1100 image shares; the analysis and the root-side
+diagnostic to run next are in
+[c1100-pcie-transport.md](c1100-pcie-transport.md) ("BAR0 reads return
+0xFFFFFFFF"). The IOP test sequence stands and reruns unchanged once a
+register read works.
 
 Two things found while preparing the run, both now handled in
 `tools/ps2iop/iop_post.py`:

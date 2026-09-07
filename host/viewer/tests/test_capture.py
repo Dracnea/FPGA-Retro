@@ -72,3 +72,11 @@ def test_cli_headless_capture(tmp_path):
     assert sheet.exists() and len(list(d.glob("frame-*.png"))) >= 3
     w, h, fps, sizes = read_avi_index(str(avi))
     assert (w, h) == (64, 48) and abs(fps - 240) < 0.01 and len(sizes) >= 30
+
+
+def test_cli_timeout_on_silent_source(tmp_path):
+    silent = tmp_path / "silent.frm1"; silent.write_bytes(b"\0" * 65536)      # bytes but never a frame
+    r = subprocess.run([sys.executable, "-m", "retroview.cli", "--transport", "file", "--file", str(silent), "--loop",
+                        "--headless", "--frames", "10", "--timeout", "0.5"], capture_output=True, text=True,
+                       env={**os.environ, "SDL_VIDEODRIVER": "dummy", "SDL_AUDIODRIVER": "dummy"})
+    assert r.returncode == 1 and "no frame for 0.5 s" in r.stdout
