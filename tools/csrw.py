@@ -6,7 +6,7 @@
     csrw.py --csr <bitstream>.csr.csv dump               # every csr_register
 Names are the csr_register rows of the csr.csv generated with the loaded
 bitstream (e.g. video_enable, hps_control, iop_reset). Same ioctl path as
-tools/ps2iop/iop_post.py and host/main_mistex_pcie.
+host/main_mistex_pcie (and the PS2 tools, now in PS2-Xilinx-UltrascalePlus).
 """
 import argparse, fcntl, os, struct, sys
 

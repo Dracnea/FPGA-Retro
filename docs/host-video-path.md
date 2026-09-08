@@ -140,7 +140,7 @@ What this cannot show yet: a game. No core has been placed in a board target
 with `sys_top` and the memory bridge (items 3-4 of the list in
 `host-gui-compatibility.md`), so the only picture the card can produce today
 is the generator's colour bars. The PS2 in particular is only its IOP
-(`ps2-iop-bringup.md`): no EE, VUs or GS, so no PS2 title can run on the card
+(now in [PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus)): no EE, VUs or GS, so no PS2 title can run on the card
 and there is nothing PS2-shaped to screenshot. The first real pictures will
 be from the fitted 8/16-bit cores once the board target exists.
 

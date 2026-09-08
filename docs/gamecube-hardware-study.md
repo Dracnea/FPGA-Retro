@@ -1,7 +1,7 @@
 # GameCube ("Dolphin") hardware study: what is documented, what exists in HDL, and what a C1100 recreation would take
 
 Written 2026-09-07 as the GameCube counterpart of
-[ps2-hardware-study.md](ps2-hardware-study.md), and as the follow-up to the
+the PS2 hardware study (now in [PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus)), and as the follow-up to the
 GameCube paragraph in [retro-cores.md](retro-cores.md). Same method: sources
 ranked, then the board, the chips, the buses and memories, then the RTL that
 exists and the RTL that would have to be written, then a sizing scaled from

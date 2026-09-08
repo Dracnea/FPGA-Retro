@@ -80,13 +80,13 @@ not the one it is on a DE10-Nano:
 
 So the PS2 fails on "nothing to port" and on clock, not on fabric size. PCSX2
 on the host GPU remains the honest answer; nothing here changes that.
-[ps2-hardware-study.md](ps2-hardware-study.md) (2026-09-06) has the
+the PS2 hardware study, now in [PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus), has the
 board, chip and documentation survey behind this paragraph, a block-by-block
 sizing scaled from the PSX fit, and the order a recreation would be built in.
 The first block of that order — the IOP, which *is* PSX RTL with a new
 address map — has been built: it boots a test ROM in xsim, fits both dies
 (12.5k LUTs, 192 URAM) and has a C1100 bitstream target;
-[ps2-iop-bringup.md](ps2-iop-bringup.md). The verdict on the EE and GS is
+[PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus), where that work now lives. The verdict on the EE and GS is
 unchanged.
 
 **GameCube:** the same, one generation later and further out of reach. No
@@ -104,7 +104,7 @@ gets a row in the measured table because there is no RTL to measure.
 board, chip and documentation survey behind this paragraph — sources
 ranked, the sizing scaled from the N64 and PSX fits, the clock problem with
 numbers, and the order a recreation would be built in — as
-[ps2-hardware-study.md](ps2-hardware-study.md) is for the PS2.
+the PS2 study, now in [PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus), is for the PS2.
 
 ## What it took to get the four cores through Vivado
 

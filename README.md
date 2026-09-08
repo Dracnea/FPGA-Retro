@@ -43,7 +43,7 @@ functions over PCIe plus retargeting the SPI transport.
 | Retro cores | 17 systems fitted on both dies (GB/GBC, SNES, GBA, PSX, N64; Saturn, Mega Drive, PC Engine, SMS, Neo Geo, Lynx, WonderSwan, Atari 7800/2600, C64, Amstrad, Amiga) — [docs/retro-cores.md](docs/retro-cores.md), [docs/retro-cores-second-pass.md](docs/retro-cores-second-pass.md); the first playable one waits on `sys_top` + memory bridge |
 | FPGA framebuffer | **`rtl/video_sink` streams a core's VGA output as FRM1 frames into the DMA; verified on the card at 60 fps with zero drops** — [docs/host-video-path.md](docs/host-video-path.md) |
 | **PCIe → host RAM** | **verified on hardware: registers, DMA, MSI** (after finding the host's unrouted 32-bit window) — see [docs/c1100-pcie-transport.md](docs/c1100-pcie-transport.md) |
-| PS2 | **a real 4 MB BIOS boots on the C1100's IOP: it loads 21 of the IOP kernel's 29 modules and then waits for an Emotion Engine that is not there** — [docs/ps2-bios-boot.md](docs/ps2-bios-boot.md); the subsystem itself is [docs/ps2-iop-bringup.md](docs/ps2-iop-bringup.md), and the rest of the console is the long road in [docs/ps2-hardware-study.md](docs/ps2-hardware-study.md) |
+| PS2 | **moved to its own repository:** [PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus) — a real 4 MB BIOS boots on the C1100's IOP there, loading 21 of the IOP kernel's 29 modules. Nothing PS2 is built from this repo any more |
 | Host software | **`hps_pcie` bridge built and simulated against `hps_io.sv`; `Main_MiSTeX` builds natively on x86-64 with a PCIe backend** (`host/main_mistex_pcie`); `shmem_*` still stubbed — see [docs/host-gui-compatibility.md](docs/host-gui-compatibility.md) |
 | GPU → HDMI/DP | **`host/viewer` (`retroview`, pygame) shows and records the stream on the host GPU**; verified against the card |
 
@@ -61,10 +61,9 @@ overlay/            drop-in overlay for a MiSTeX-ports checkout; paths mirror it
   cores/NES/rtl/    UltraScale+ PLL shim, selected by MiSTeX.yaml, no core edits
   rtl/hps_pcie/     the HPS side of hps_io as PCIe registers, with its xsim bench
   rtl/video_sink/   core VGA output -> FRM1 stream for the PCIe DMA, with its xsim bench
-  cores/PS2/        the PS2 I/O processor subsystem (simulated, fitted, C1100 bitstream)
 docs/               architecture and verified build results
 host/               Main_MiSTeX x86-64 port (files + patch against MiSTeX-devel's repo); retroview, the frame viewer
-tools/              install-overlay.sh, jtag-load.sh, pcie-bringup.sh, pcie-diag.sh, video-capture.sh, ps2iop/ (IOP bring-up over PCIe)
+tools/              install-overlay.sh, jtag-load.sh, pcie-bringup.sh, pcie-diag.sh, video-capture.sh
 ```
 
 `overlay/` is not standalone — these files must sit inside a checkout of

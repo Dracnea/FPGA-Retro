@@ -139,7 +139,8 @@ Link trained at the design's full target, gen3 x4, with no downshift.
 The section above verified enumeration, link training and driver binding. It
 did **not** verify a register read: no `litepcie_util info` output was
 recorded, and none of the three images derived from this design had been
-loaded. Today two of them were (`c1100_ps2_iop.bit`, then
+loaded. Today two of them were (`c1100_ps2_iop.bit`, since moved to
+[PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus), then
 `c1100_hps_video_test.bit`), with the same result on both:
 
 ```
@@ -147,7 +148,7 @@ litepcie 0000:c1:00.0: Version \xff\xff\xff...          (driver probe)
 SoC Identifier   : ����...                               (litepcie_util info)
 Write 0x12345678 to Scratch register:  Read: 0xffffffff  (litepcie_util scratch_test)
 video_dims / video_frames / video_drops : ffffffff        (tools/csrw.py)
-iop_status : ffffffff                                     (tools/ps2iop/iop_post.py)
+iop_status : ffffffff                                     (the PS2 IOP tool of the day)
 ```
 
 Host side, identical to the 09-05 record: `10ee:9034`, BAR0 at `b6c00000`

@@ -12,13 +12,13 @@ the measurements behind each claim are in the linked pages.
 |---|---|
 | Load a bitstream over the card's USB JTAG and talk to it over PCIe from Linux | Play a game. No retro core has a board target with `sys_top` and the memory bridge yet |
 | Stream video from the card to a window on your GPU at 60 fps, record it, take screenshots | See anything but the test pattern generator's colour bars |
-| Run the PlayStation 2 I/O processor (R3000, RAM/ROM, timers, INTC, SPU2 stand-in, SIO2, CDVD stub) and load your own BIOS image into its ROM | Run a PS2 game. There is no Emotion Engine, no VU, no Graphics Synthesizer, no DMA controller, no SIF |
+| — the PS2 has moved to [its own repository](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus) | — |
 | Build every image yourself from the sources with Vivado | Use Windows. The transport driver is Linux only ([docs/host-video-path.md](host-video-path.md) says what a Windows driver needs) |
 
 The PS2 is the honest headline: the part that exists is the small processor
 that runs the controller, sound and disc I/O. It boots a test ROM on the card
 exactly as it does in simulation. A game needs the rest of the console, which
-is the long road described in [docs/ps2-hardware-study.md](ps2-hardware-study.md).
+is the long road described in [PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus).
 
 ## What you need
 
@@ -79,7 +79,6 @@ right one from the bitstream's name:
 | `c1100_pcie_video_transport.bit` | `build/c1100_pcie` |
 | `c1100_hps_video_test.bit` | `build/c1100_hps_video_test` |
 | `c1100_hps_test.bit` | `build/c1100_hps_test` |
-| `c1100_ps2_iop.bit` | `build/c1100_ps2_iop` |
 | `c1100_pcie_diag.bit` | `build/c1100_pcie_diag` |
 
 If you only have the prebuilt bitstreams and no MiSTeX-ports build, generate
@@ -154,100 +153,14 @@ The DMA integrity and latency test for the bare transport is
 against the transport image's software; run it with
 `c1100_pcie_video_transport.bit` loaded).
 
-## The PlayStation 2 I/O processor
+## The PlayStation 2
 
-With `c1100_ps2_iop.bit` loaded, `sudo tools/ps2iop/hw-test.sh` does the PCIe
-bring-up and the whole test in six seconds: lock and heartbeat, the 4096-word
-boot ROM loaded and counted, the boot test with the pad set (POST `01`…`0A`
-then `AA`), the same with nothing pressed (must fail at stage `09`), five
-repeats. The log goes to `build/ps2_hw/`. Expected end of a passing run:
-
-```
-[  0.010s] POST AA  (count 12)
-PASS
-```
-
-The pieces, for driving it yourself (`tools/ps2iop/iop_post.py --csr
-bitstreams/c1100_ps2_iop.csr.csv ...`): `status`, `reset hold|release`,
-`load <image> [--addr WORD]`, `pad [VALUE]`, `run <image> [--timeout S]
-[--pad0 VALUE]`. Images are the assembler's `.hex` (one word per line,
-`overlay/cores/PS2/sim/asm_r3000.py`) or raw little-endian `.bin`. Word
-address 0 is the reset vector `0xBFC00000`. The POST register the tool watches
-is the IOP's real one at `0x1F802070`.
-
-### Driving the card with no driver and no root
-
-Every register above is also reachable over the card's own UART, through
-LiteX's `litex_server`, with no `litepcie` driver, no `insmod` and no `sudo`
-at all — you only need to be in `plugdev` so the FTDI tty is readable. Add
-`--uart` to `iop_post.py` or `bios_run.py` and they take that path instead:
-
-```sh
-tools/uart-probe.sh ~/MiSTeX-ports/build/c1100_ps2_diag/csr.csv    # finds the tty
-tools/ps2iop/iop_post.py --uart /dev/ttyUSB2 \
-    --csr ~/MiSTeX-ports/build/c1100_ps2_diag/csr.csv status
-```
-
-This needs one of the diagnostic images (`c1100_ps2_diag.bit`), which is the
-one that carries UARTbone. It is much slower — about 1150 register writes a
-second, so the 4096-word boot test loads in four seconds and a 4 MB BIOS takes
-about twenty-five minutes against a couple of seconds over PCIe — but it works
-when PCIe does not, and it is the quickest way to a first result on a machine
-where you have not built the driver.
-
-### Loading your BIOS
-
-The ROM is the BIOS's own size, 4 MB, mapped where the console maps it. So a
-BIOS dump (`.bin`, 4,194,304 bytes; the usual name is `SCPH-xxxxx.bin`) loads
-as it is. Use the diagnostic image and its runner, which keeps a POST ring, a
-stall detector and a bus trace and writes everything into `build/ps2_bios/`:
-
-```sh
-sudo tools/ps2iop/bios-hw.sh /path/to/your/bios.bin 30      # over PCIe
-tools/ps2iop/bios_run.py /path/to/your/bios.bin --uart /dev/ttyUSB2 --seconds 30
-```
-
-**What actually happens today** (measured on 2026-09-08, `0220A`): the reset
-code runs, takes its PS2 initialisation path and reaches `POST 09`, the search
-for `IOPBOOT`, at 1.65 ms of IOP time — POST codes `FC 02 03 04 05 08 09` in
-the ring. IOPBOOT then loads **21 of the IOP kernel's 29 modules**, up to and
-including `SIFCMD`, and the CPU spins there. It does not get a console up and
-it does not boot a game: the last modules need the DMA controller and the SIF
-link to an Emotion Engine, and neither exists yet, so a kernel that comes up
-and waits is the right answer for this design. Add `--dump-ram 0x200000` to
-see the module list on your own card:
-
-```sh
-tools/ps2iop/iop_ram_map.py build/ps2_bios/<run>/ram.bin --rom /path/to/your/bios.bin
-```
-
-Two things to know before you read your own log:
-
-- **A retail BIOS prints nothing.** No module in any retail `rom0` writes to
-  the IOP's serial port, so the console FIFO staying empty is correct, not a
-  fault. Emulators show IOP console text by intercepting the `Kprintf` call,
-  which is not something hardware can do. Read the POST ring instead.
-- Your BIOS will behave like the ones tested here whichever console it came
-  from: the `IOPBTCONF` module list is byte-identical in all 53 dumps checked,
-  from the launch `0100J` to `0250J`, and `IOPBOOT` is at `rom0 + 0x4A000` in
-  every one (`tools/ps2iop/romdir.py <dir> --compare`).
-
-To see what your own dump contains and what it will ask the hardware for:
-
-```sh
-tools/ps2iop/romdir.py /path/to/your/bios.bin --list    # every file in the ROM
-tools/ps2iop/romdir.py /path/to/your/bios.bin --boot    # the 29 modules IOPBOOT loads
-tools/ps2iop/romdir.py /path/to/your/bios.bin --hw SIFMAN   # the registers one touches
-```
-
-Where the boot stops is exactly the information the next block needs, so
-please keep the log directory and say which ROMVER you used.
-[docs/ps2-bios-boot.md](ps2-bios-boot.md) has the detail.
-
-A game ISO has no use on the card yet. The CDVD block answers the boot-time
-status commands and has no disc path; when it gets one, the image will be
-served from the host over the same PCIe link, and the guide will say how.
-Keep both files out of the repository.
+The PS2 work has moved to its own repository:
+[PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus). It has its own user guide covering the
+IOP boot test, loading your own BIOS dump and reading the result back off the
+card. The host setup above (udev rules, JTAG loading, the PCIe bring-up and
+the rule that the driver must match the image) is the same for both, because
+both use the same C1100 transport.
 
 ## Building the images yourself
 
@@ -257,11 +170,9 @@ identifies the one you have.
 ```sh
 tools/install-overlay.sh /path/to/MiSTeX-ports
 cd /path/to/MiSTeX-ports
-venv/bin/python mistex_boards/c1100_ps2_diag.py --build         # ~20 min, the one for BIOS work
-venv/bin/python mistex_boards/c1100_ps2_iop.py --build          # ~15 min
 venv/bin/python mistex_boards/c1100_hps_video_test.py --build   # ~10 min
 venv/bin/python mistex_boards/c1100_pcie_video.py --build       # ~9 min
-make -C build/c1100_ps2_diag/software/kernel && make -C build/c1100_ps2_diag/software/user
+make -C build/c1100_hps_video_test/software/kernel && make -C build/c1100_hps_video_test/software/user
 ```
 
 Two things to check in every build log before trusting the result, because
@@ -291,5 +202,5 @@ met`. The reasons are in [docs/c1100-pcie-transport.md](c1100-pcie-transport.md)
 The engineering record behind every line of this page: the transport
 ([c1100-pcie-transport.md](c1100-pcie-transport.md)), the video path
 ([host-video-path.md](host-video-path.md)), the PS2 IOP
-([ps2-iop-bringup.md](ps2-iop-bringup.md)), and the fitted cores
+(now in [PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus)), and the fitted cores
 ([retro-cores.md](retro-cores.md)).

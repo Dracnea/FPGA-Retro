@@ -159,5 +159,5 @@ patched copy of `banks2600.sv`.
 - **Arcade** (`Arcade-jtcores` and the other `Arcade-*` MiSTeX ports) are
   a different, larger survey; they load through `support/arcade` MRA files,
   two of whose paths use `shmem_put`.
-- **PS2 and GameCube**: [ps2-hardware-study.md](ps2-hardware-study.md); the
+- **PS2 and GameCube**: the PS2 study moved to [PS2-Xilinx-UltrascalePlus](https://github.com/Dracnea/PS2-Xilinx-UltrascalePlus); the
   IOP is built, the rest is the long road.
