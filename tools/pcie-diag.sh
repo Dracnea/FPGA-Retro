@@ -35,7 +35,6 @@ sw_for_bit() {   # $1 = bitstream path -> software dir of the build that made it
     esac
     echo "${LITEPCIE_SW:-$USER_HOME/MiSTeX-ports/build/$n/software}"
 }
-FJTAG=${FJTAG:-$USER_HOME/.cache/fjtag-target/release/fjtag}
 BITS=("$@"); [[ ${#BITS[@]} -gt 0 ]] || BITS=(bitstreams/c1100_pcie_video_transport.bit)
 mkdir -p build/pcie_diag; chown "$USER_NAME" build/pcie_diag
 LOG=build/pcie_diag/$(date +%Y%m%d-%H%M%S).log
@@ -70,7 +69,7 @@ for BIT in "${BITS[@]}"; do
     CSR=${BIT%.bit}.csr.csv
     SW=$(sw_for_bit "$BIT")
     echo; echo "========== $(date -Is)  $BIT  md5 $(md5sum "$BIT" | cut -c1-32)  driver $SW/kernel/litepcie.ko"
-    echo "== JTAG load"; as_user "$FJTAG" --load "$BIT" --no-serve || { echo "FAIL: load"; continue; }
+    echo "== JTAG load"; as_user env FJTAG="${FJTAG:-}" PATH="$PATH" tools/jtag-load.sh "$BIT" || { echo "FAIL: load"; continue; }
     echo "== PCIe remove + rescan"
     rmmod litepcie 2>/dev/null
     for d in $(lspci -D -n -d 10ee: | awk '{print $1}'); do echo 1 > "/sys/bus/pci/devices/$d/remove"; done

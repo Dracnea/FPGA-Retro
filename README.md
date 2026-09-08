@@ -8,6 +8,10 @@ Varium C1100 (Alveo U55N, `xcu55n`) and the SQRL Forest Kitten 33 (`xcvu33p`) �
 which are a genuinely different kind of target: enormous fabric, no video
 outputs, no HPS, and a host connection that is PCIe rather than SPI.
 
+**Own a C1100 and want to run this?** Start with
+[docs/user-guide.md](docs/user-guide.md): what works today, what does not,
+and the exact steps.
+
 ## Why these cards need a different architecture
 
 MiSTer's ARM HPS shares DDR3 with the FPGA fabric, so `Main_MiSTer`'s
@@ -37,10 +41,11 @@ functions over PCIe plus retargeting the SPI transport.
 | stage | status |
 |---|---|
 | Retro cores | 17 systems fitted on both dies (GB/GBC, SNES, GBA, PSX, N64; Saturn, Mega Drive, PC Engine, SMS, Neo Geo, Lynx, WonderSwan, Atari 7800/2600, C64, Amstrad, Amiga) — [docs/retro-cores.md](docs/retro-cores.md), [docs/retro-cores-second-pass.md](docs/retro-cores-second-pass.md); the first playable one waits on `sys_top` + memory bridge |
-| FPGA framebuffer | **`rtl/video_sink` streams a core's VGA output as FRM1 frames into the DMA, simulated word-for-word**; no framebuffer needed — [docs/host-video-path.md](docs/host-video-path.md) |
-| **PCIe → host RAM** | **built, timing-clean, loaded on hardware** — see [docs/c1100-pcie-transport.md](docs/c1100-pcie-transport.md) |
+| FPGA framebuffer | **`rtl/video_sink` streams a core's VGA output as FRM1 frames into the DMA; verified on the card at 60 fps with zero drops** — [docs/host-video-path.md](docs/host-video-path.md) |
+| **PCIe → host RAM** | **verified on hardware: registers, DMA, MSI** (after finding the host's unrouted 32-bit window) — see [docs/c1100-pcie-transport.md](docs/c1100-pcie-transport.md) |
+| PS2 | **the I/O processor subsystem boots its test ROM on the C1100**, stage for stage as in xsim — [docs/ps2-iop-bringup.md](docs/ps2-iop-bringup.md); the rest of the console is the long road in [docs/ps2-hardware-study.md](docs/ps2-hardware-study.md) |
 | Host software | **`hps_pcie` bridge built and simulated against `hps_io.sv`; `Main_MiSTeX` builds natively on x86-64 with a PCIe backend** (`host/main_mistex_pcie`); `shmem_*` still stubbed — see [docs/host-gui-compatibility.md](docs/host-gui-compatibility.md) |
-| GPU → HDMI/DP | **`host/viewer` (`retroview`, pygame) shows the stream on the host GPU**; verified headless, waits for a card load |
+| GPU → HDMI/DP | **`host/viewer` (`retroview`, pygame) shows and records the stream on the host GPU**; verified against the card |
 
 The headline number from the PCIe build: the endpoint, DMA engine,
 scatter-gather and frame source together cost **0.53% of the device's LUTs and
@@ -59,7 +64,7 @@ overlay/            drop-in overlay for a MiSTeX-ports checkout; paths mirror it
   cores/PS2/        the PS2 I/O processor subsystem (simulated, fitted, C1100 bitstream)
 docs/               architecture and verified build results
 host/               Main_MiSTeX x86-64 port (files + patch against MiSTeX-devel's repo); retroview, the frame viewer
-tools/              install-overlay.sh, pcie-bringup.sh, ps2iop/ (IOP bring-up over PCIe)
+tools/              install-overlay.sh, jtag-load.sh, pcie-bringup.sh, pcie-diag.sh, video-capture.sh, ps2iop/ (IOP bring-up over PCIe)
 ```
 
 `overlay/` is not standalone — these files must sit inside a checkout of

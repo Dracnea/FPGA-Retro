@@ -44,7 +44,6 @@ sw_for_bit() {   # $1 = bitstream path -> software dir of the build that made it
 }
 SW=$(sw_for_bit "$BIT")
 [[ -f $SW/kernel/litepcie.ko ]] || { echo "no driver for this image: $SW/kernel/litepcie.ko (build it: make -C $SW/kernel)" >&2; exit 1; }
-FJTAG=${FJTAG:-$USER_HOME/.cache/fjtag-target/release/fjtag}
 OUT=build/video/$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"; chown -R "$USER_NAME" build/video
 as_user() { runuser -u "$USER_NAME" -- "$@"; }
@@ -52,7 +51,7 @@ exec > >(tee "$OUT/capture.log") 2>&1
 echo "== $(date -Is) capture from $BIT for $SECS s -> $OUT"
 
 echo "== JTAG load (as $USER_NAME)"
-as_user "$FJTAG" --load "$BIT" --no-serve || { echo "FAIL: JTAG load"; exit 1; }
+as_user env FJTAG="${FJTAG:-}" PATH="$PATH" tools/jtag-load.sh "$BIT" || { echo "FAIL: JTAG load"; exit 1; }
 
 echo "== PCIe: drop the stale identity, rescan, driver"
 for d in $(lspci -D -n -d 10ee: | awk '{print $1}'); do echo 1 > "/sys/bus/pci/devices/$d/remove"; done
