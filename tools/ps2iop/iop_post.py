@@ -2,16 +2,27 @@
 """Drive the C1100 PS2 IOP bring-up design over PCIe: load a ROM, release reset,
 watch the POST register.
 
-    iop_post.py [--dev /dev/litepcie0] [--csr csr.csv] status
+    iop_post.py [--dev /dev/litepcie0 | --uart PORT] [--csr csr.csv] status
     iop_post.py ... load ROM.hex|ROM.bin [--addr WORD]     # write an image into the IOP ROM
     iop_post.py ... reset {hold|release}
     iop_post.py ... pad [VALUE]                            # read or set the SIO2 port-0 pad (iop_pad0)
     iop_post.py ... run ROM.hex|ROM.bin [--timeout SEC] [--pad0 VALUE]   # load, release, poll until AA/EE
+    iop_post.py ... peek ADDR [--words N]                  # read IOP memory (CPU must be in reset)
+    iop_post.py ... dump FILE [--addr A] [--length N]      # dump IOP RAM to a file, 2 MB by default
+    iop_post.py ... verify ROM.bin [--samples N]           # read the ROM back and compare with the file
 
 `run` writes `iop_pad0` before releasing reset. The CSR resets to 0xFFFF (nothing
 pressed) but boot_test.s stage 09 expects the pad to answer 0x5A3C, which is what
 the testbench drives, so that is the default; pass --pad0 0xFFFF to make stage 09
 fail on purpose and prove the pad path is live.
+
+Two transports reach the same registers. The default is the litepcie driver's
+LITEPCIE_IOCTL_REG ioctl over PCIe, which is fast enough to stream a 4 MB BIOS
+in seconds. `--uart /dev/ttyUSB2` instead goes through litex_server on the
+card's UARTbone, which needs no kernel driver and no root at all - useful when
+PCIe is down or on a machine where the driver cannot be built - but at 115200
+baud it carries about 1150 register writes a second, so a 4 MB image takes a
+quarter of an hour and a 4096-word test image about four seconds.
 
 ROM images are either the assembler's one-hex-word-per-line files
 (cores/PS2/sim/asm_r3000.py) or raw little-endian words.  Word address 0 is
@@ -56,6 +67,74 @@ class Dev:
     def wr(self, name, v): self.writel(self.reg(name), v)
 
 
+class UartDev:
+    """The same register interface over the card's UARTbone, via litex_server.
+
+    Starts a litex_server on the tty unless one is already bound to the port,
+    and speaks to it with litex's RemoteClient, so no driver and no root are
+    needed. Reads cost a round trip (about a millisecond); writes stream, and
+    the socket back-pressures once the UART falls behind, which is why the ROM
+    load reports its own rate rather than trusting a burst that has only been
+    queued.
+    """
+    slow = True      # writes queue at UART speed; load() paces itself on this
+
+    def __init__(self, csr_csv, port="/dev/ttyUSB2", tcp_port=1234, baud=115200):
+        import subprocess
+        sys.path.insert(0, os.path.expanduser("~/MiSTeX-ports/venv/lib/python3.12/site-packages"))
+        from litex import RemoteClient
+        self.server = None
+        for attempt in range(2):
+            try:
+                # The default 2 s timeout is far too short: a queued write burst
+                # drains at UART speed, and a read behind it waits for the whole
+                # queue. raise_on_timeout matters more - without it litex returns
+                # default values on a timeout, which would look like real data.
+                self.wb = RemoteClient(csr_csv=csr_csv, port=tcp_port,
+                                       timeout=120.0, raise_on_timeout=True)
+                self.wb.open()
+                self.wb.regs  # touch, so a dead server fails here
+                break
+            except Exception:
+                if attempt or self.server is not None:
+                    raise
+                exe = os.path.expanduser("~/MiSTeX-ports/venv/bin/litex_server")
+                self.server = subprocess.Popen(
+                    [exe, "--uart", "--uart-port", port, "--uart-baudrate", str(baud),
+                     "--bind-port", str(tcp_port)],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                time.sleep(3)
+        self.regs = {}
+        with open(csr_csv) as f:
+            for line in f:
+                parts = line.strip().split(",")
+                if parts and parts[0] == "csr_register":
+                    self.regs[parts[1]] = int(parts[2], 0)
+
+    def reg(self, name):
+        if name not in self.regs:
+            sys.exit(f"csr.csv has no register {name}; is it the csr.csv of the loaded bitstream?")
+        return getattr(self.wb.regs, name)
+
+    def rd(self, name):    return self.reg(name).read()
+    def wr(self, name, v): self.reg(name).write(v & 0xFFFFFFFF)
+
+    def close(self):
+        try:
+            self.wb.close()
+        except Exception:
+            pass
+        if self.server is not None:
+            self.server.terminate()
+
+
+def open_dev(args, csr):
+    """Whichever transport the arguments ask for."""
+    if getattr(args, "uart", None):
+        return UartDev(csr, port=args.uart, tcp_port=getattr(args, "port", 1234))
+    return Dev(args.dev, csr)
+
+
 def read_image(path):
     if path.endswith(".hex"):
         words = []
@@ -93,15 +172,104 @@ def show(dev):
     return s
 
 
-def load(dev, path, addr=0):
+def load(dev, path, addr=0, progress=None, chunk=None):
+    """Write an image into the IOP ROM, re-anchoring the pointer every chunk.
+
+    The ROM write port auto-increments: `iop_rom_addr` sets the pointer and
+    each `iop_rom_data` write stores a word and steps it on. The step happens
+    in the IOP clock domain, one pulse per host write through a
+    `PulseSynchronizer`, so the pointer's position after N writes is N pulses
+    of trust. That is fine for the 4096-word boot test and **was not** for a
+    4 MB BIOS: on 2026-09-08 a full image left the CPU executing whatever was
+    at 0xBFC00000 and running off into empty RAM without ever writing POST,
+    while the same file truncated to 512 KB booted normally. The pointer is 20
+    bits, so one slipped word in a million shifts every later word and a
+    pointer that ends up past the end wraps onto the reset vector - which is
+    the mechanism that fits, though it has not been measured directly.
+
+    So the address is rewritten at the start of every chunk. Any slip is then
+    confined to the chunk it happened in and can never wrap, and the read of
+    `iop_rom_count` at each boundary paces a slow transport at the same time.
+    """
     words = read_image(path)
-    dev.wr("iop_rom_addr", addr)
+    step = chunk or (4096 if getattr(dev, "slow", False) else 65536)
     t0 = time.time()
-    for w in words:
-        dev.wr("iop_rom_data", w)
+    for base in range(0, len(words), step):
+        dev.wr("iop_rom_addr", addr + base)
+        for w in words[base:base + step]:
+            dev.wr("iop_rom_data", w)
+        # a read forces a queued transport to drain, so the rate below is the
+        # transfer's and not the socket's
+        got = dev.rd("iop_rom_count")
+        if progress and len(words) > step:
+            done = min(base + step, len(words))
+            el = time.time() - t0
+            progress(f"   ROM {done}/{len(words)} words  {el:6.1f} s elapsed, "
+                     f"{(len(words) - done) / max(done / el, 1e-6) / 60:5.1f} min left")
     dt = time.time() - t0
-    print(f"loaded {len(words)} words at word address {addr} in {dt:.2f} s")
+    print(f"loaded {len(words)} words at word address {addr} in {dt:.2f} s "
+          f"({len(words) / max(dt, 1e-6):.0f} words/s); rom_count {got}")
     return len(words)
+
+
+def peek(dev, addr, words=1):
+    """Read `words` words of IOP memory from byte address `addr`.
+
+    The peek port only answers while the IOP is in reset, and reading
+    `iop_peek_data` advances the pointer by four and fetches the next word, so
+    a run of words costs one register read each after the first address write.
+    `iop_peek_count` counts completed fetches; comparing it before and after
+    catches a host that outran the fetch.
+    """
+    if "iop_peek_addr" not in dev.regs:
+        sys.exit("this bitstream has no peek port (rebuild with the memory peek; see docs/ps2-iop-bringup.md)")
+    if not (dev.rd("iop_reset") & 1):
+        sys.exit("the IOP is running; hold it in reset first (iop_post.py reset hold)")
+    before = dev.rd("iop_peek_count")
+    dev.wr("iop_peek_addr", addr & 0x1FFFFFC)
+    out = [dev.rd("iop_peek_data") for _ in range(words)]
+    got = dev.rd("iop_peek_count") - before
+    # the count includes the fetch each read kicked off, plus the first
+    if got < words:
+        print(f"warning: {words} words read but only {got} fetches completed; "
+              f"the host outran the peek port", file=sys.stderr)
+    return out
+
+
+ROM_BASE = 0x800000        # bit 23 of a peek address selects the ROM
+
+
+def verify(dev, path, samples=64, window=16):
+    """Read the loaded ROM back through the peek port and compare it with the file.
+
+    Reads `window` consecutive words at each of `samples` offsets spread over
+    the image, plus the first and last window, which is enough to catch both a
+    wholesale failure and a shift: a shifted image matches nowhere, and a
+    partially written one matches at the start and not at the end. Cheap - a
+    few hundred register reads - and the only way to know the card holds what
+    the file says, which no counter on the host can tell you.
+    """
+    words = read_image(path)
+    offsets = sorted({0, max(len(words) - window, 0)} |
+                     {(i * len(words)) // samples for i in range(samples)})
+    bad = []
+    for off in offsets:
+        n = min(window, len(words) - off)
+        if n <= 0:
+            continue
+        got = peek(dev, ROM_BASE + off * 4, n)
+        want = words[off:off + n]
+        if got != want:
+            first = next(i for i in range(n) if got[i] != want[i])
+            bad.append((off + first, want[first], got[first]))
+    checked = sum(min(window, len(words) - o) for o in offsets)
+    if not bad:
+        print(f"ROM verify: {checked} words at {len(offsets)} offsets all match {path}")
+        return 0
+    print(f"ROM verify: {len(bad)} of {len(offsets)} sampled windows differ from {path}")
+    for off, want, got in bad[:20]:
+        print(f"   word {off:7d} (rom0+0x{off * 4:06x}): file {want:08x}  card {got:08x}")
+    return 1
 
 
 def run(dev, path, timeout, pad0=0x5A3C):
@@ -131,6 +299,9 @@ def run(dev, path, timeout, pad0=0x5A3C):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dev", default="/dev/litepcie0")
+    ap.add_argument("--uart", metavar="TTY", nargs="?", const="/dev/ttyUSB2",
+                    help="drive the card over UARTbone through litex_server instead of PCIe")
+    ap.add_argument("--port", type=int, default=1234, help="litex_server TCP port for --uart")
     ap.add_argument("--csr", default="csr.csv")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
@@ -139,9 +310,15 @@ def main():
     p = sub.add_parser("run");   p.add_argument("rom"); p.add_argument("--timeout", type=float, default=5.0)
     p.add_argument("--pad0", type=lambda x: int(x, 0), default=0x5A3C)
     p = sub.add_parser("pad");   p.add_argument("value", nargs="?", type=lambda x: int(x, 0))
+    p = sub.add_parser("peek");  p.add_argument("addr", type=lambda x: int(x, 0))
+    p.add_argument("--words", type=int, default=8)
+    p = sub.add_parser("verify"); p.add_argument("rom"); p.add_argument("--samples", type=int, default=64)
+    p = sub.add_parser("dump");  p.add_argument("file")
+    p.add_argument("--addr", type=lambda x: int(x, 0), default=0)
+    p.add_argument("--length", type=lambda x: int(x, 0), default=2 * 1024 * 1024)
     a = ap.parse_args()
 
-    dev = Dev(a.dev, a.csr)
+    dev = open_dev(a, a.csr)
     if a.cmd == "status":
         show(dev)
     elif a.cmd == "load":
@@ -153,6 +330,17 @@ def main():
         if a.value is not None:
             dev.wr("iop_pad0", a.value & 0xFFFF)
         print(f"iop_pad0 = 0x{dev.rd('iop_pad0') & 0xFFFF:04X}")
+    elif a.cmd == "peek":
+        for i, w in enumerate(peek(dev, a.addr, a.words)):
+            print(f"  {a.addr + 4 * i:08x}: {w:08x}")
+    elif a.cmd == "verify":
+        sys.exit(verify(dev, a.rom, a.samples))
+    elif a.cmd == "dump":
+        t0 = time.time()
+        words = peek(dev, a.addr, a.length // 4)
+        with open(a.file, "wb") as f:
+            f.write(struct.pack("<%dI" % len(words), *words))
+        print(f"{len(words) * 4} bytes from 0x{a.addr:08x} in {time.time() - t0:.1f} s -> {a.file}")
     elif a.cmd == "run":
         sys.exit(run(dev, a.rom, a.timeout, a.pad0))
 

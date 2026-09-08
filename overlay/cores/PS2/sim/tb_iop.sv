@@ -18,6 +18,11 @@ module tb_iop;
    wire        con_wr; wire [7:0] con_data;      // the IOP's serial console (Kprintf)
    always @(posedge clk1x) if (con_wr) $write("%c", con_data);
    reg         vblank = 0, hblank = 0;
+   // memory peek: the host-side port that dumps IOP RAM/ROM while the CPU is reset
+   reg         peek_req = 0;
+   reg  [24:0] peek_addr = 0;
+   wire [31:0] peek_data;
+   wire        peek_valid;
 
    iop_top dut
    (
@@ -25,6 +30,7 @@ module tb_iop;
       .hblank(hblank), .vblank(vblank), .ext_irq(32'h0), .pad0_buttons(16'h5A3C),
       .rom_wr(rom_wr), .rom_addr(rom_addr), .rom_data(rom_data),
       .post_code(post_code), .post_wr(post_wr), .con_wr(con_wr), .con_data(con_data),
+      .peek_req(peek_req), .peek_addr(peek_addr), .peek_data(peek_data), .peek_valid(peek_valid),
       .cpu_error(cpu_error), .mem_idle(mem_idle)
    );
 
@@ -43,6 +49,42 @@ module tb_iop;
    end
    integer i, t0, words, run_ms;
    string romfile;
+
+   // One peek: the CPU must already be in reset, which is the port's condition.
+   task do_peek(input [24:0] a, output [31:0] d);
+      integer guard;
+      begin
+         @(posedge clk1x);
+         peek_addr <= a; peek_req <= 1;
+         @(posedge clk1x);
+         peek_req <= 0;
+         guard = 0;
+         while (!peek_valid && guard < 200) begin @(posedge clk1x); guard = guard + 1; end
+         if (!peek_valid) begin $display("FAIL: peek of %08x never completed", a); $finish; end
+         d = peek_data;
+      end
+   endtask
+
+   // The peek port is checked after the boot test passes: hold the CPU in
+   // reset, then read back the pattern stage 02 wrote to RAM at 0x00010000
+   // and the first ROM word, which is the image the bench loaded.
+   task check_peek;
+      reg [31:0] d;
+      begin
+         reset <= 1;
+         repeat (80) @(posedge clk1x);
+         do_peek(25'h0010000, d);
+         if (d !== 32'h12345678) begin $display("FAIL: peek RAM 0x00010000 = %08x, expected 12345678", d); $finish; end
+         do_peek(25'h0010004, d);
+         if (d !== 32'h12346789) begin $display("FAIL: peek RAM 0x00010004 = %08x, expected 12346789", d); $finish; end
+         do_peek(25'h0800000, d);
+         if (d !== image[0]) begin $display("FAIL: peek ROM word 0 = %08x, expected %08x", d, image[0]); $finish; end
+         do_peek(25'h0800008, d);
+         if (d !== image[2]) begin $display("FAIL: peek ROM word 2 = %08x, expected %08x", d, image[2]); $finish; end
+         $display("peek: RAM 0x00010000/4 and ROM words 0/2 read back correctly");
+      end
+   endtask
+
 
    initial begin
       if (!$value$plusargs("rom=%s", romfile)) romfile = "boot_test.hex";
@@ -80,6 +122,7 @@ module tb_iop;
                $finish;
             end
             $display("SPU core 0 RAM row 0x200 = %032x (ok)", spu_row);
+            check_peek;
             $display("PASS"); $finish;
          end
          if (post_code == 8'hEE) begin $display("FAIL: test reported failure"); $finish; end

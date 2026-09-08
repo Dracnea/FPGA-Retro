@@ -46,5 +46,5 @@ xelab -debug off --relax -L mem -L altera_mf -s iop mem.$TB > xelab.log 2>&1 || 
 # XSIM_ARGS passes plusargs to the debug bench, e.g.
 #   XSIM_ARGS="-testplusarg cycles=40000 -testplusarg quiet=1" ./run_sim.sh --debug
 if [[ $TB == tb_iop_dbg ]]; then xsim iop -R ${XSIM_ARGS:-} 2>&1 | grep -v "^#" | tee xsim.log; exit 0; fi
-xsim iop -R ${XSIM_ARGS:-} 2>&1 | tee xsim.log | grep -E "POST|PASS|FAIL|reset released|Error|error" || true
+xsim iop -R ${XSIM_ARGS:-} 2>&1 | tee xsim.log | grep -E "POST|PASS|FAIL|peek|reset released|Error|error" || true
 grep -q "^PASS" xsim.log

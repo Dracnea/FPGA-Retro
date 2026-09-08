@@ -200,6 +200,17 @@ class IOPBringup(LiteXModule, AutoCSR):
     status     POST register, cpu_error, mem_idle, MMCM lock, a heartbeat bit.
     post_count POST writes since the IOP last left reset.
     rom_count  rom_data writes since power-up.
+    peek_addr  byte address in IOP memory (bit 23 selects the 4 MB ROM over the
+               2 MB RAM); writing it fetches that word.
+    peek_data  the fetched word.  READING IT ALSO ADVANCES: the address steps
+               on by four and the next word is fetched, so dumping memory is
+               one address write and then one read per word.  Only works while
+               `reset` holds the IOP, which is the only time the RAM port is
+               free; a real console has no such port, and it exists because
+               the evidence about a BIOS boot is in RAM (LOADCORE's module
+               list) and a retail BIOS prints nothing to the serial port.
+    peek_count fetches completed since power-up, so a dump can check that it
+               read as many distinct words as it asked for.
     """
     def __init__(self, platform, locked):
         self.reset      = CSRStorage(1, reset=1, description="1 holds the IOP in reset")
@@ -215,6 +226,9 @@ class IOPBringup(LiteXModule, AutoCSR):
         self.post_count = CSRStatus(32, description="POST writes since the IOP left reset")
         self.rom_count  = CSRStatus(32, description="rom_data writes since power-up")
         self.pad0       = CSRStorage(16, reset=0xFFFF, description="digital pad on SIO2 port 0: PS1 bit order, active low (0xFFFF = nothing pressed)")
+        self.peek_addr  = CSRStorage(25, description="IOP byte address to read (bit 23 selects ROM); writing fetches it")
+        self.peek_data  = CSRStatus(32,  description="the word at peek_addr; reading advances peek_addr by 4 and fetches the next")
+        self.peek_count = CSRStatus(32,  description="peek fetches completed since power-up")
 
         # --- sys -> iop -------------------------------------------------------
         reset_iop = Signal()
@@ -239,6 +253,36 @@ class IOPBringup(LiteXModule, AutoCSR):
             If(rom_wr_sync.o, rom_wr.eq(1), rom_word.eq(self.rom_data.storage)),
         ]
         self.sync += If(self.rom_data.re, self.rom_count.status.eq(self.rom_count.status + 1))
+
+        # --- memory peek ------------------------------------------------------
+        # The pointer moves in the sys domain; the request crosses as a pulse
+        # one cycle later, so the address MultiReg has already settled when the
+        # pulse arrives on the other side.
+        peek_ptr = Signal(25)
+        peek_arm = Signal()
+        peek_go  = Signal()
+        self.sync += [
+            peek_arm.eq(0),
+            peek_go.eq(peek_arm),
+            If(self.peek_addr.re,
+                peek_ptr.eq(self.peek_addr.storage),
+                peek_arm.eq(1),
+            ).Elif(self.peek_data.we,          # rd_stb: the host has taken this word
+                peek_ptr.eq(peek_ptr + 4),
+                peek_arm.eq(1),
+            ),
+        ]
+        self.peek_req_sync = peek_req_sync = PulseSynchronizer("sys", "iop")
+        self.comb += peek_req_sync.i.eq(peek_go)
+        peek_addr_iop  = Signal(25)
+        peek_data_iop  = Signal(32)
+        peek_valid_iop = Signal()
+        self.specials += MultiReg(peek_ptr, peek_addr_iop, "iop")
+        self.peek_done_sync = peek_done_sync = PulseSynchronizer("iop", "sys")
+        self.comb += peek_done_sync.i.eq(peek_valid_iop)
+        self.specials += MultiReg(peek_data_iop, self.peek_data.status, "sys")
+        self.sync += If(peek_done_sync.o, self.peek_count.status.eq(self.peek_count.status + 1))
+        self.peek_iop = (peek_req_sync.o, peek_addr_iop, peek_data_iop, peek_valid_iop)
 
         # --- iop -> sys -------------------------------------------------------
         post_code = Signal(8)
@@ -307,6 +351,10 @@ class IOPBringup(LiteXModule, AutoCSR):
             i_rom_wr    = rom_wr,
             i_rom_addr  = rom_ptr,
             i_rom_data  = rom_word,
+            i_peek_req       = self.peek_iop[0],
+            i_peek_addr      = self.peek_iop[1],
+            o_peek_data      = self.peek_iop[2],
+            o_peek_valid     = self.peek_iop[3],
             o_post_code = post_code,
             o_post_wr   = post_wr,
             o_dbg_req        = self.dbg["req"],

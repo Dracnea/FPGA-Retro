@@ -2,20 +2,29 @@
 """Boot a real PS2 BIOS on the C1100's IOP and report where it gets to.
 
     tools/ps2iop/bios_run.py /path/to/rom0.bin [--seconds 5] [--build ~/MiSTeX-ports/build/c1100_ps2_diag]
-                                              [--no-scope] [--out build/ps2_bios/<name>]
+                                              [--uart [/dev/ttyUSB2]] [--no-scope]
+                                              [--dump-ram BYTES] [--out build/ps2_bios/<name>]
 
 Needs the diagnostic PS2 image (c1100_ps2_diag: POST ring, stall detector,
-bus analyzer) loaded and its driver bound, and litex_server on the UART for
-the analyzer (tools/uart-probe.sh finds the tty; --no-scope skips it).
+bus analyzer) loaded on the card. Registers are reached over PCIe through the
+litepcie driver by default, or entirely over the card's UARTbone with --uart,
+which needs no driver and no root; the analyzer always speaks to litex_server
+on that UART (tools/uart-probe.sh finds the tty; --no-scope skips it), and
+with --uart it shares the one connection. The BIOS is 4 MB, so the ROM load is
+a couple of seconds over PCIe and about twenty-five minutes over the UART.
 
 Sequence: arm the analyzer (trigger = stall flag, almost all samples before
 the trigger), hold reset, stream the 4 MB image into the ROM, release reset,
 poll the POST register for --seconds printing every change, then read the
 POST ring (last 64 writes with IOP cycle stamps), the stall detector, and
 if the analyzer triggered, the last bus transactions before the hang,
-decoded as fetches / loads / stores with addresses and data.
+decoded as fetches / loads / stores with addresses and data. With --dump-ram
+it finally re-asserts reset and reads IOP RAM back through the peek port,
+which is what tools/ps2iop/iop_ram_map.py turns into a list of the modules
+that loaded - the only real evidence a retail BIOS leaves, since it prints
+nothing.
 """
-import argparse, os, sys, time
+import argparse, os, struct, sys, time
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -53,8 +62,17 @@ def main():
     ap.add_argument("--seconds", type=float, default=5.0)
     ap.add_argument("--build", default=os.path.expanduser("~/MiSTeX-ports/build/c1100_ps2_diag"))
     ap.add_argument("--dev", default="/dev/litepcie0")
+    ap.add_argument("--uart", metavar="TTY", nargs="?", const="/dev/ttyUSB2",
+                    help="drive everything over UARTbone instead of PCIe (no driver, no root)")
     ap.add_argument("--port", type=int, default=1234)
     ap.add_argument("--no-scope", action="store_true")
+    ap.add_argument("--no-verify", action="store_true",
+                    help="skip reading the loaded ROM back through the peek port before the run")
+    ap.add_argument("--verify-samples", type=int, default=64)
+    ap.add_argument("--dump-ram", type=lambda x: int(x, 0), default=0, metavar="BYTES",
+                    help="after the run, hold reset and dump this much IOP RAM through the peek "
+                         "port (0x200000 for all of it); needs an image with the peek port, and "
+                         "costs about 1.4 ms a word over the UART, so keep it small there")
     ap.add_argument("--pad0", type=lambda x: int(x, 0), default=0xFFFF)
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
@@ -67,15 +85,19 @@ def main():
         print(*s); print(*s, file=log); log.flush()
 
     csr = os.path.join(a.build, "csr.csv")
-    dev = iop_post.Dev(a.dev, csr)
+    dev = iop_post.open_dev(a, csr)
     say(f"== {datetime.now():%Y-%m-%d %H:%M:%S}  {a.rom}  ({os.path.getsize(a.rom)} bytes)  -> {out}")
 
     an = None
+    wb = None
     if not a.no_scope:
         try:
             from litex import RemoteClient
             from litescope.software.driver.analyzer import LiteScopeAnalyzerDriver
-            wb = RemoteClient(csr_csv=csr, port=a.port); wb.open()
+            if isinstance(dev, iop_post.UartDev):
+                wb = dev.wb              # one connection carries both
+            else:
+                wb = RemoteClient(csr_csv=csr, port=a.port); wb.open()
             an = LiteScopeAnalyzerDriver(wb.regs, "zanalyzer_iop", config_csv=os.path.join(a.build, "zanalyzer_iop.csv"), debug=False)
             an.configure_group(0); an.configure_subsampler(1)
             an.add_rising_edge_trigger([n for n, w in an.layouts[0] if "stall" in n][0])
@@ -89,8 +111,19 @@ def main():
     dev.wr("iop_reset", 1)
     dev.wr("iop_pad0", a.pad0)
     t0 = time.time()
-    n = iop_post.load(dev, a.rom)
+    n = iop_post.load(dev, a.rom, progress=say)
     say(f"ROM: {n} words in {time.time() - t0:.1f} s; rom_count {dev.rd('iop_rom_count')}")
+    # Check the card actually holds the image before blaming the boot for
+    # anything. rom_count only counts writes the host issued; the peek port is
+    # the only thing that can say what the fabric stored. Cheap - a few hundred
+    # reads - and it runs while the CPU is still in reset, which is when the
+    # peek port answers.
+    if "iop_peek_addr" in dev.regs and not a.no_verify:
+        try:
+            ok = iop_post.verify(dev, a.rom, samples=a.verify_samples)
+            say(f"ROM verify: {'all sampled windows match the file' if ok == 0 else 'MISMATCH - see above'}")
+        except Exception as e:
+            say(f"ROM verify skipped ({e})")
     dev.wr("iop_reset", 0)
     t0 = time.time(); seen = None; last_count = -1
     while time.time() - t0 < a.seconds:
@@ -140,7 +173,23 @@ def main():
             sys.path.insert(0, os.path.join(HERE, ".."))
             names, data = load_csv(os.path.join(out, "trace.csv"))
             decode(names, data, say)
-        wb.close()
+        if wb is not None and wb is not getattr(dev, "wb", None):
+            wb.close()
+    # RAM is the only real evidence a retail BIOS leaves, so take it last: the
+    # peek port answers only with the CPU in reset, and holding reset clears
+    # the POST ring, which is why everything above is read first.
+    if a.dump_ram:
+        if "iop_peek_addr" not in dev.regs:
+            say("--dump-ram: this bitstream has no peek port; skipped")
+        else:
+            dev.wr("iop_reset", 1)
+            t1 = time.time()
+            words = iop_post.peek(dev, 0, a.dump_ram // 4)
+            path = os.path.join(out, "ram.bin")
+            open(path, "wb").write(struct.pack("<%dI" % len(words), *words))
+            say(f"RAM: {len(words) * 4} bytes in {time.time() - t1:.1f} s -> {path}")
+            say(f"     tools/ps2iop/iop_ram_map.py {path} --rom {a.rom}")
+
     say(f"done; files in {out}")
 
 

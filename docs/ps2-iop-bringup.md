@@ -337,6 +337,11 @@ pad `0x5A3C` (expect 01..0A then AA), the same with pad `0xFFFF` (expect EE at
 
 ## Booting a real BIOS — 2026-09-08
 
+What a real BIOS asks of the hardware, how the ROM images are read, the
+memory peek port and how far the boot gets on the card are in
+[ps2-bios-boot.md](ps2-bios-boot.md). What follows is the first pass, in
+simulation, that established the IOP takes the PS2 path at all.
+
 The owner's own rom0 dumps (4 MB each, the `ROMVER` strings intact, kept
 outside the repo) went into the IOP ROM, which is that size for this reason.
 Read from the ROM before running anything:

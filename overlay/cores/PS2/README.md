@@ -18,9 +18,10 @@ directory has run on hardware yet.
 
 | file | what | origin |
 |---|---|---|
-| `iop_top.vhd` | the subsystem: CPU, memory mux, RAM/ROM, SSBUS config, INTC, timers 0-5, POST register, stubs; reset sequencing | new |
+| `iop_top.vhd` | the subsystem: CPU, memory mux, RAM/ROM, SSBUS config, INTC, timers 0-5, POST register, stubs; reset sequencing; the host's memory peek port | new |
 | `iop_memorymux.vhd` | the IOP address map on the PSX memory mux's state machine; only the decode changed, `diff` against `PSX/upstream/rtl/memorymux.vhd` shows exactly what | PSX_MiSTer, modified |
 | `iop_ram.vhd` | 2 MB RAM + 4 MB ROM as 128-bit-row UltraRAM behind the PSX SDRAM-controller protocol, with the instruction-cache line fill | new |
+| — | **the peek port** lives in `iop_top`: while the CPU is held in reset the RAM port is switched from the memory mux to `peek_req`/`peek_addr`, so the host can read any word of RAM or ROM back for a post-mortem. No arbitration and no extra memory — the mux has no request in flight while the CPU is reset. Checked in `sim/tb_iop.sv` after the boot test passes | new |
 | `iop_intc.vhd` | I_STAT / I_MASK / I_CTRL, 32 sources, PS2SDK bit numbering | new |
 | `iop_timer32.vhd` | timers 3-5 (32-bit) at 0x1F801480, modelled on the PSX `timer.vhd` | new |
 | `iop_spu2.vhd` | two PSX SPU cores at 0x1F900000 / 0x1F900400 with the 32-bit bus split into the 16-bit halfword each register wants; IRQs to INTC bit 9. **PSX register layout**, not the SPU2's — see the file header | new (cores: PSX_MiSTer `spu.vhd`, `spu_ram.vhd`, `spu_gauss.vhd`) |
@@ -122,6 +123,19 @@ the RTL or recorded in the file it belongs to:
    under `synthesis translate_off` for the bench.
 
 ## Next
+
+A real BIOS now boots this subsystem on the C1100 and its kernel loads 21 of
+the 29 modules `IOPBTCONF` names, stopping after `SIFCMD` because the SIF has
+no Emotion Engine behind it and the DMA controller is a register stub
+([docs/ps2-bios-boot.md](../../../docs/ps2-bios-boot.md)). Those two are
+therefore the next real blocks, in that order.
+
+The nearest job is the write mask on the four stub buses. `iop_regstub`
+stores whole 32-bit words and the memory mux does not export a write mask for
+the DMA, DMA2, SSBUS2 or SIF buses (it does for CDVD, SIO2 and SPU2), so the
+halfword stores SIFMAN makes to DMA block counts clobber the other half. It
+costs nothing today, because nothing behind those registers acts on them, and
+it has to be right before the DMA controller does.
 
 Still on the IOP: an SPU2 register decode in front of the two PSX cores
 (and 2 MB shared RAM), the IOP DMAC (SPU2, SIO2, CDVD and SIF all move their

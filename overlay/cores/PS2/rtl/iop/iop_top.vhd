@@ -40,6 +40,18 @@ entity iop_top is
       rom_wr     : in  std_logic;
       rom_addr   : in  std_logic_vector(19 downto 0);
       rom_data   : in  std_logic_vector(31 downto 0);
+      -- Memory peek port: reads a word of IOP RAM or ROM for the host while
+      -- the CPU is held in reset.  A real console has no such port; this is
+      -- how a post-mortem is taken, because the interesting evidence about a
+      -- BIOS boot is in RAM (LOADCORE's module list, the modules themselves)
+      -- and there is no serial console on a retail BIOS to print it.
+      -- peek_req for one cycle with peek_addr (byte address, bit 23 selects
+      -- the ROM) answers with peek_valid for one cycle and peek_data.
+      -- Ignored unless the CPU is in reset, so it can never race the CPU.
+      peek_req   : in  std_logic := '0';
+      peek_addr  : in  std_logic_vector(24 downto 0) := (others => '0');
+      peek_data  : out std_logic_vector(31 downto 0) := (others => '0');
+      peek_valid : out std_logic := '0';
       -- POST register (0x1F802070): what the boot code says about its progress
       post_code  : out std_logic_vector(7 downto 0) := (others => '0');
       post_wr    : out std_logic := '0';
@@ -181,6 +193,18 @@ architecture arch of iop_top is
    signal bus_sio_read, bus_sio_write : std_logic;
    signal bus_sio_dataRead  : std_logic_vector(31 downto 0);
 
+   -- memory peek (see the port comment): the RAM port is muxed away from the
+   -- memory mux while the CPU is in reset, and iop_ram's own reset is released
+   -- for the duration so its request FSM can serve the read.
+   signal peek_mode         : std_logic := '0';
+   signal peek_busy         : std_logic := '0';
+   signal ram_reset         : std_logic := '1';
+   signal ram_ena_m         : std_logic;
+   signal ram_rnw_m         : std_logic;
+   signal ram_Adr_m         : std_logic_vector(24 downto 0);
+   signal ram_be_m          : std_logic_vector(3 downto 0);
+   signal ram_cache_m       : std_logic;
+
    -- reset sequencing (see below)
    signal reset_int         : std_logic := '1';
    signal ss_reset          : std_logic := '0';
@@ -233,6 +257,36 @@ begin
    end process;
 
    cpu_error <= errorCPU or errorCPU2;
+
+   -- ------------------------------------------------------------ memory peek
+   -- Only while the CPU is held in reset, so the mux never has a request in
+   -- flight and no arbitration is needed: the RAM port is simply switched over.
+   peek_mode   <= reset_int;
+   ram_ena_m   <= peek_req  when peek_mode = '1' else ram_ena;
+   ram_rnw_m   <= '1'       when peek_mode = '1' else ram_rnw;
+   ram_Adr_m   <= peek_addr when peek_mode = '1' else ram_Adr;
+   ram_be_m    <= "1111"    when peek_mode = '1' else ram_be;
+   ram_cache_m <= '0'       when peek_mode = '1' else ram_cache;
+   -- iop_ram's reset only forces its FSM to IDLE; release it whenever a peek
+   -- is in flight so the read can complete with the CPU still in reset.
+   ram_reset   <= reset_int and not (peek_busy or peek_req);
+
+   process (clk1x)
+   begin
+      if rising_edge(clk1x) then
+         peek_valid <= '0';
+         -- No reset branch on purpose: a peek only ever happens while the IOP
+         -- is held in reset, so clearing this on `reset` would kill every
+         -- request before it started.  peek_busy powers up at '0'.
+         if (peek_req = '1' and peek_mode = '1') then
+            peek_busy <= '1';
+         elsif (peek_busy = '1' and ram_done = '1') then
+            peek_busy  <= '0';
+            peek_data  <= ram_dataRead;
+            peek_valid <= '1';
+         end if;
+      end if;
+   end process;
 
    dbg_req        <= mem_request;
    dbg_rnw        <= mem_rnw;
@@ -489,13 +543,13 @@ begin
    port map
    (
       clk1x         => clk1x,
-      reset         => reset_int,
-      ram_ena       => ram_ena,
-      ram_rnw       => ram_rnw,
-      ram_Adr       => ram_Adr,
-      ram_be        => ram_be,
+      reset         => ram_reset,
+      ram_ena       => ram_ena_m,
+      ram_rnw       => ram_rnw_m,
+      ram_Adr       => ram_Adr_m,
+      ram_be        => ram_be_m,
       ram_dataWrite => ram_dataWrite,
-      ram_cache     => ram_cache,
+      ram_cache     => ram_cache_m,
       ram_done      => ram_done,
       ram_dataRead  => ram_dataRead,
       cache_wr      => cache_wr,

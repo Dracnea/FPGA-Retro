@@ -2,7 +2,10 @@
 #
 # Boot a real PS2 BIOS on the C1100's IOP, end to end.
 #
-#   sudo tools/ps2iop/bios-hw.sh /path/to/rom0.bin [seconds]
+#   sudo tools/ps2iop/bios-hw.sh /path/to/rom0.bin [seconds] [extra bios_run.py args]
+#
+# e.g.  sudo tools/ps2iop/bios-hw.sh rom0.bin 30 --dump-ram 0x200000
+# to take the IOP's whole RAM afterwards and read it with iop_ram_map.py.
 #
 # Root is needed only for the PCIe part: dropping the identity the host
 # enumerated before the image was loaded, rescanning, and inserting the
@@ -22,6 +25,8 @@ set -uo pipefail
 cd "$(dirname "$0")/../.."
 BIOS=${1:?path to a PS2 BIOS dump (rom0, 4 MB)}
 SECS=${2:-5}
+shift $(( $# > 2 ? 2 : $# ))
+EXTRA=("$@")
 [[ -f $BIOS ]] || { echo "no such file: $BIOS" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || { echo "run with sudo (the PCIe rescan and the driver need root)" >&2; exit 1; }
 
@@ -50,7 +55,7 @@ chgrp plugdev /dev/litepcie0 && chmod 0660 /dev/litepcie0
 lspci -vv -s "$(lspci -D -n -d 10ee: | awk '{print $1}' | head -1 | cut -d: -f2-)" 2>/dev/null | grep -E 'Region 0|LnkSta:'
 
 echo "== BIOS run as $USER_NAME"
-as_user env HOME="$USER_HOME" tools/ps2iop/bios_run.py "$BIOS" --seconds "$SECS"
+as_user env HOME="$USER_HOME" tools/ps2iop/bios_run.py "$BIOS" --seconds "$SECS" "${EXTRA[@]}"
 rc=$?
 chown -R "$USER_NAME" build/ps2_bios 2>/dev/null
 exit $rc

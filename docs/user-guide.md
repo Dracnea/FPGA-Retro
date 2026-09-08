@@ -175,24 +175,74 @@ bitstreams/c1100_ps2_iop.csr.csv ...`): `status`, `reset hold|release`,
 address 0 is the reset vector `0xBFC00000`. The POST register the tool watches
 is the IOP's real one at `0x1F802070`.
 
+### Driving the card with no driver and no root
+
+Every register above is also reachable over the card's own UART, through
+LiteX's `litex_server`, with no `litepcie` driver, no `insmod` and no `sudo`
+at all — you only need to be in `plugdev` so the FTDI tty is readable. Add
+`--uart` to `iop_post.py` or `bios_run.py` and they take that path instead:
+
+```sh
+tools/uart-probe.sh ~/MiSTeX-ports/build/c1100_ps2_diag/csr.csv    # finds the tty
+tools/ps2iop/iop_post.py --uart /dev/ttyUSB2 \
+    --csr ~/MiSTeX-ports/build/c1100_ps2_diag/csr.csv status
+```
+
+This needs one of the diagnostic images (`c1100_ps2_diag.bit`), which is the
+one that carries UARTbone. It is much slower — about 1150 register writes a
+second, so the 4096-word boot test loads in four seconds and a 4 MB BIOS takes
+about twenty-five minutes against a couple of seconds over PCIe — but it works
+when PCIe does not, and it is the quickest way to a first result on a machine
+where you have not built the driver.
+
 ### Loading your BIOS
 
 The ROM is the BIOS's own size, 4 MB, mapped where the console maps it. So a
 BIOS dump (`.bin`, 4,194,304 bytes; the usual name is `SCPH-xxxxx.bin`) loads
-as it is:
+as it is. Use the diagnostic image and its runner, which keeps a POST ring, a
+stall detector and a bus trace and writes everything into `build/ps2_bios/`:
 
 ```sh
-tools/ps2iop/iop_post.py --csr bitstreams/c1100_ps2_iop.csr.csv run /path/to/your/bios.bin --timeout 30
+sudo tools/ps2iop/bios-hw.sh /path/to/your/bios.bin 30      # over PCIe
+tools/ps2iop/bios_run.py /path/to/your/bios.bin --uart /dev/ttyUSB2 --seconds 30
 ```
 
-`run` streams the whole image through the ROM port (about a million register
-writes, a few seconds), releases reset, and prints each POST value the BIOS
-writes, since IOPBOOT uses that same register. That is the next experiment
-this project has not yet run, and the honest expectation is that the boot
-stops early: the IOP kernel needs the DMA controller and the SIF link to the
-Emotion Engine, and neither exists yet. Where it stops is exactly the
-information the next block needs, so please keep the log
-(`build/ps2_hw/` if you run it through the script, otherwise your terminal).
+**What actually happens today** (measured on 2026-09-08, `0220A`): the reset
+code runs, takes its PS2 initialisation path and reaches `POST 09`, the search
+for `IOPBOOT`, at 1.65 ms of IOP time — POST codes `FC 02 03 04 05 08 09` in
+the ring. IOPBOOT then loads **21 of the IOP kernel's 29 modules**, up to and
+including `SIFCMD`, and the CPU spins there. It does not get a console up and
+it does not boot a game: the last modules need the DMA controller and the SIF
+link to an Emotion Engine, and neither exists yet, so a kernel that comes up
+and waits is the right answer for this design. Add `--dump-ram 0x200000` to
+see the module list on your own card:
+
+```sh
+tools/ps2iop/iop_ram_map.py build/ps2_bios/<run>/ram.bin --rom /path/to/your/bios.bin
+```
+
+Two things to know before you read your own log:
+
+- **A retail BIOS prints nothing.** No module in any retail `rom0` writes to
+  the IOP's serial port, so the console FIFO staying empty is correct, not a
+  fault. Emulators show IOP console text by intercepting the `Kprintf` call,
+  which is not something hardware can do. Read the POST ring instead.
+- Your BIOS will behave like the ones tested here whichever console it came
+  from: the `IOPBTCONF` module list is byte-identical in all 53 dumps checked,
+  from the launch `0100J` to `0250J`, and `IOPBOOT` is at `rom0 + 0x4A000` in
+  every one (`tools/ps2iop/romdir.py <dir> --compare`).
+
+To see what your own dump contains and what it will ask the hardware for:
+
+```sh
+tools/ps2iop/romdir.py /path/to/your/bios.bin --list    # every file in the ROM
+tools/ps2iop/romdir.py /path/to/your/bios.bin --boot    # the 29 modules IOPBOOT loads
+tools/ps2iop/romdir.py /path/to/your/bios.bin --hw SIFMAN   # the registers one touches
+```
+
+Where the boot stops is exactly the information the next block needs, so
+please keep the log directory and say which ROMVER you used.
+[docs/ps2-bios-boot.md](ps2-bios-boot.md) has the detail.
 
 A game ISO has no use on the card yet. The CDVD block answers the boot-time
 status commands and has no disc path; when it gets one, the image will be
@@ -207,10 +257,11 @@ identifies the one you have.
 ```sh
 tools/install-overlay.sh /path/to/MiSTeX-ports
 cd /path/to/MiSTeX-ports
+venv/bin/python mistex_boards/c1100_ps2_diag.py --build         # ~20 min, the one for BIOS work
 venv/bin/python mistex_boards/c1100_ps2_iop.py --build          # ~15 min
 venv/bin/python mistex_boards/c1100_hps_video_test.py --build   # ~10 min
 venv/bin/python mistex_boards/c1100_pcie_video.py --build       # ~9 min
-make -C build/c1100_ps2_iop/software/kernel && make -C build/c1100_ps2_iop/software/user
+make -C build/c1100_ps2_diag/software/kernel && make -C build/c1100_ps2_diag/software/user
 ```
 
 Two things to check in every build log before trusting the result, because

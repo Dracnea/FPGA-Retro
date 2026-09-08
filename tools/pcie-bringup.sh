@@ -6,12 +6,33 @@
 # without a PCIe endpoint still shows its stale factory identity after a JTAG
 # load. This removes that stale device, rescans, loads the driver and verifies.
 #
-# Run as root:  sudo tools/pcie-bringup.sh
+# Run as root, from anywhere:
+#
+#   sudo /path/to/FPGA-Retro/tools/pcie-bringup.sh [image]
+#
+# `image` is the build directory name of the bitstream that is on the card, so
+# the driver inserted is the one generated with it -- that has to match, or
+# every register reads at the wrong address (docs/c1100-pcie-transport.md).
+# Default c1100_pcie. Override the whole path with LITEPCIE_SW if the build
+# lives somewhere else.
 set -uo pipefail
+cd "$(dirname "$0")/.."          # so a relative invocation works from anywhere
 
-SW=${LITEPCIE_SW:-${MISTEX_PORTS:?set MISTEX_PORTS or LITEPCIE_SW}/build/c1100_pcie/software}
+if [[ $EUID -ne 0 ]]; then echo "must run as root: sudo $0" >&2; exit 1; fi
 
-if [[ $EUID -ne 0 ]]; then echo "must run as root" >&2; exit 1; fi
+# sudo leaves HOME as root's, so find the invoking user's checkout instead.
+USER_NAME=${SUDO_USER:-$(id -un)}
+USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
+IMAGE=${1:-c1100_pcie}
+SW=${LITEPCIE_SW:-${MISTEX_PORTS:-$USER_HOME/MiSTeX-ports}/build/$IMAGE/software}
+
+if [[ ! -f $SW/kernel/litepcie.ko ]]; then
+    echo "no driver at $SW/kernel/litepcie.ko" >&2
+    echo "build it:  make -C $SW/kernel" >&2
+    echo "or name the image on the card, e.g.  sudo $0 c1100_ps2_diag" >&2
+    exit 1
+fi
+echo "driver: $SW/kernel/litepcie.ko"
 
 echo "== before =="
 lspci -nn -d 10ee: || true
@@ -59,4 +80,8 @@ dmesg | grep -i litepcie | tail -25
 
 echo
 echo "== identifier / CSR =="
-"$SW/user/litepcie_util" info 2>&1 | head -40
+if [[ -x $SW/user/litepcie_util ]]; then
+    "$SW/user/litepcie_util" info 2>&1 | head -40
+else
+    echo "litepcie_util not built (make -C $SW/user); skipping the identifier read"
+fi
