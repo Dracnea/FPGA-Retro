@@ -78,7 +78,7 @@ def add_iop_sources(platform, root=PORTS_ROOT):
         join(up, "SyncRamDualByteEnable.vhd"), join(up, "dpram.vhd"), join(up, "export.vhd"),
         join(up, "divider.vhd"), join(up, "datacache.vhd"), join(up, "cpu.vhd"), join(up, "timer.vhd"),
         join(up, "memctrl.vhd"),
-        join(core, "rtl", "iop", "iop_regstub.vhd"), join(core, "rtl", "iop", "iop_intc.vhd"),
+        join(core, "rtl", "iop", "iop_regstub.vhd"), join(core, "rtl", "iop", "iop_console.vhd"), join(core, "rtl", "iop", "iop_intc.vhd"),
         join(core, "rtl", "iop", "iop_timer32.vhd"), join(core, "rtl", "iop", "iop_ram.vhd"),
         join(up, "spu.vhd"), join(up, "spu_ram.vhd"), join(up, "spu_gauss.vhd"),
         join(core, "rtl", "iop", "iop_spuram.vhd"), join(core, "rtl", "iop", "iop_spu2.vhd"),
@@ -245,6 +245,12 @@ class IOPBringup(LiteXModule, AutoCSR):
         post_wr   = Signal()
         cpu_error = Signal()
         mem_idle  = Signal()
+        self.post_code, self.post_wr, self.cpu_error_iop = post_code, post_wr, cpu_error   # iop domain
+        self.con_wr, self.con_data = Signal(name="iop_con_wr"), Signal(8, name="iop_con_data")   # serial console bytes, iop domain
+        # the CPU bus, iop domain, for the diagnostic build's analyzer
+        self.dbg = {n: Signal(w, name="iop_dbg_" + n) for n, w in (
+            ("req", 1), ("rnw", 1), ("isdata", 1), ("addr_instr", 32), ("addr_data", 32),
+            ("wdata", 32), ("rdata", 32), ("done", 1), ("wmask", 4))}
         heartbeat = Signal(25)
         self.sync.iop += heartbeat.eq(heartbeat + 1)
 
@@ -303,6 +309,17 @@ class IOPBringup(LiteXModule, AutoCSR):
             i_rom_data  = rom_word,
             o_post_code = post_code,
             o_post_wr   = post_wr,
+            o_dbg_req        = self.dbg["req"],
+            o_dbg_rnw        = self.dbg["rnw"],
+            o_dbg_isdata     = self.dbg["isdata"],
+            o_dbg_addr_instr = self.dbg["addr_instr"],
+            o_dbg_addr_data  = self.dbg["addr_data"],
+            o_dbg_wdata      = self.dbg["wdata"],
+            o_dbg_rdata      = self.dbg["rdata"],
+            o_dbg_done       = self.dbg["done"],
+            o_dbg_wmask      = self.dbg["wmask"],
+            o_con_wr         = self.con_wr,
+            o_con_data       = self.con_data,
             o_cpu_error = cpu_error,
             o_mem_idle  = mem_idle,
         )

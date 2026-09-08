@@ -334,3 +334,47 @@ checked: status (`locked` = 1, POST 00, counts 0), heartbeat read twice 0.5 s
 apart (must differ), ROM load with `rom_count` = 4096, the boot test with
 pad `0x5A3C` (expect 01..0A then AA), the same with pad `0xFFFF` (expect EE at
 09), five repeats of the passing run, final status.
+
+## Booting a real BIOS — 2026-09-08
+
+The owner's own rom0 dumps (4 MB each, the `ROMVER` strings intact, kept
+outside the repo) went into the IOP ROM, which is that size for this reason.
+Read from the ROM before running anything:
+
+- The reset vector (`0xBFC00000`) reads PRId and branches: below `0x59` (the
+  R5900 reads `0x2E20`) is the IOP path at `0xBFC02000`.
+- The IOP path reads PRId again: **below `0x10` it takes the PS1-compatibility
+  init table** (SSBUS delays, COM_DELAY, EXP1 at `0x1F000000`, the SIO2 port
+  registers), writes POST 01, then after POST 07 searches the first 512 KB of
+  ROM for a module named `TBIN` and, finding none, falls into the POST FA
+  halt loop. **From `0x10` up (and `0x1F801450` bit 3 clear) it takes the PS2
+  init table** (CDVD at `0x1F402000`, DEV9, SPU2, cache configuration at
+  `0xFFFE0140/0144`), writes POST 02, and after POST 07 searches for `IOPBOOT`
+  and jumps to it with the RAM size code in `a0`. Every PRId test in the
+  0220A ROM compares against `0x10`, `0x23` or `0x59`.
+- The reset path's other dependencies, all present: `0xBF801060` (RAM size),
+  `0xBF802070` (POST), `0xBF8010F0` (DPCR), `0xBD000020` (SIF MSFLAG, read
+  and written once, behind a `0xBF801450` bit-31 test that the stub answers
+  0), `0xFFFE0130` (cache control, handled inside the PSX CPU).
+
+**xsim, 0220A ROM, PRId 2 (the PSX core's default), 40 ms of IOP time:**
+
+```
+[28443903000] reset released          (the 1M-word ROM load takes 28 ms of bench time)
+[28512206000] POST fe                 (table A's own write to 0x1F802070)
+[28653289000] POST 01
+[28996840000] POST 03
+[30020629000] POST 04
+[30027953000] POST 05
+[30036199000] POST 06
+[30045612000] POST 07
+FAIL: timeout, last POST 07           (inside the ROM scan for TBIN: 512 KB in 16-byte steps, uncached)
+```
+
+So the first thing a real BIOS proved is that the IOP core was reporting a
+PS1 CPU. `iop_top` now loads PRId `0x1F` through the CPU's savestate port
+during reset (the upstream CPU is untouched; `IOP_PRID` in `iop_top.vhd`).
+The same run with that value, and the run on the card through the
+diagnostic image (`c1100_ps2_diag`: UART, POST ring with cycle stamps, a
+stall detector, and a LiteScope on the CPU bus; `tools/ps2iop/bios_run.py`),
+are the next measurements.

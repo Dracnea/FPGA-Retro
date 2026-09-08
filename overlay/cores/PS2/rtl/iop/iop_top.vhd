@@ -50,7 +50,21 @@ entity iop_top is
       spu_r1     : out std_logic_vector(15 downto 0);
       -- diagnostics
       cpu_error  : out std_logic;
-      mem_idle   : out std_logic
+      mem_idle   : out std_logic;
+      -- trace: the CPU's memory bus as the memory mux sees it, for an on-chip
+      -- analyzer (left open in builds that do not use it)
+      dbg_req        : out std_logic;
+      dbg_rnw        : out std_logic;
+      dbg_isdata     : out std_logic;
+      dbg_addr_instr : out std_logic_vector(31 downto 0);
+      dbg_addr_data  : out std_logic_vector(31 downto 0);
+      dbg_wdata      : out std_logic_vector(31 downto 0);
+      dbg_rdata      : out std_logic_vector(31 downto 0);
+      dbg_done       : out std_logic;
+      dbg_wmask      : out std_logic_vector(3 downto 0);
+      -- console: bytes the IOP writes to its serial port (SIO1, 0x1F801050), i.e. Kprintf
+      con_wr         : out std_logic;
+      con_data       : out std_logic_vector(7 downto 0)
    );
 end entity;
 
@@ -161,11 +175,26 @@ architecture arch of iop_top is
    signal clk2xIndex        : std_logic := '0';
    signal irq_spu           : std_logic_vector(1 downto 0);
    signal irq_sio2, irq_cdvd : std_logic;
+   -- SIO1 (0x1F801050): the IOP's serial console
+   signal bus_sio_addr      : unsigned(3 downto 0);
+   signal bus_sio_dataWrite : std_logic_vector(31 downto 0);
+   signal bus_sio_read, bus_sio_write : std_logic;
+   signal bus_sio_dataRead  : std_logic_vector(31 downto 0);
 
    -- reset sequencing (see below)
    signal reset_int         : std_logic := '1';
    signal ss_reset          : std_logic := '0';
    signal reset_cnt         : unsigned(6 downto 0) := (others => '0');
+   -- PRId (COP0 register 15) the CPU reports.  The PSX core's reset default is
+   -- 0x00000002, a PS1 R3000A, and the PS2 BIOS branches on it: below 0x10 it
+   -- takes its PS1-compatibility path (init table A, then it looks for a "TBIN"
+   -- module and halts at POST FA when there is none, which is what a real BIOS
+   -- did in xsim on 2026-09-08); 0x10..0x58 is the IOP path that runs IOPBOOT.
+   -- Every PRId test in the 0220A ROM compares against 0x10, 0x23 or 0x59.
+   -- 0x1F is below 0x23 like the original CXD97xx IOPs.  Loaded through the
+   -- CPU's savestate port during reset, so the upstream CPU is untouched.
+   constant IOP_PRID        : std_logic_vector(31 downto 0) := x"0000001F";
+   signal ss_wren           : std_logic := '0';
 
 begin
 
@@ -181,9 +210,15 @@ begin
    begin
       if rising_edge(clk1x) then
          ss_reset <= '0';
+         ss_wren  <= '0';
          if (reset = '1') then
             if (reset_cnt = 0) then
                ss_reset <= '1';
+            end if;
+            -- after the SS_reset pulse, overwrite slot 13 (PRId); the CPU copies
+            -- the slots into COP0 on every cycle its reset is asserted
+            if (reset_cnt = 1 and ss_reset = '0') then
+               ss_wren <= '1';
             end if;
             reset_cnt <= to_unsigned(1, 7);
             reset_int <= '1';
@@ -198,6 +233,30 @@ begin
    end process;
 
    cpu_error <= errorCPU or errorCPU2;
+
+   dbg_req        <= mem_request;
+   dbg_rnw        <= mem_rnw;
+   dbg_isdata     <= mem_isData;
+   dbg_addr_instr <= std_logic_vector(mem_addressInstr);
+   dbg_addr_data  <= std_logic_vector(mem_addressData);
+   dbg_wdata      <= mem_dataWrite;
+   dbg_rdata      <= mem_dataRead;
+   dbg_done       <= mem_done;
+   dbg_wmask      <= mem_writeMask;
+
+   iconsole : entity work.iop_console
+   port map
+   (
+      clk1x         => clk1x,
+      reset         => reset_int,
+      bus_addr      => bus_sio_addr,
+      bus_dataWrite => bus_sio_dataWrite,
+      bus_read      => bus_sio_read,
+      bus_write     => bus_sio_write,
+      bus_dataRead  => bus_sio_dataRead,
+      con_wr        => con_wr,
+      con_data      => con_data
+   );
 
    icpu : entity work.cpu
    port map
@@ -249,9 +308,9 @@ begin
       gte_cmdData       => open,
       gte_cmdEna        => open,
       SS_reset          => ss_reset,
-      SS_DataWrite      => ZERO32,
-      SS_Adr            => (others => '0'),
-      SS_wren_CPU       => '0',
+      SS_DataWrite      => IOP_PRID,
+      SS_Adr            => to_unsigned(13, 8),
+      SS_wren_CPU       => ss_wren,
       SS_wren_SCP       => '0',
       SS_rden_CPU       => '0',
       SS_rden_SCP       => '0',
@@ -318,12 +377,12 @@ begin
       bus_pad_write        => open,
       bus_pad_writeMask    => open,
       bus_pad_dataRead     => ZERO32,
-      bus_sio_addr         => open,
-      bus_sio_dataWrite    => open,
-      bus_sio_read         => open,
-      bus_sio_write        => open,
+      bus_sio_addr         => bus_sio_addr,
+      bus_sio_dataWrite    => bus_sio_dataWrite,
+      bus_sio_read         => bus_sio_read,
+      bus_sio_write        => bus_sio_write,
       bus_sio_writeMask    => open,
-      bus_sio_dataRead     => ZERO32,
+      bus_sio_dataRead     => bus_sio_dataRead,
       bus_memc2_addr       => bus_memc2_addr,
       bus_memc2_dataWrite  => bus_memc2_dataWrite,
       bus_memc2_read       => bus_memc2_read,

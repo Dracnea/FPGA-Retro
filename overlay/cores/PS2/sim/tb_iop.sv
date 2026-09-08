@@ -15,6 +15,8 @@ module tb_iop;
    reg  [31:0] rom_data = 0;
    wire [7:0]  post_code;
    wire        post_wr, cpu_error, mem_idle;
+   wire        con_wr; wire [7:0] con_data;      // the IOP's serial console (Kprintf)
+   always @(posedge clk1x) if (con_wr) $write("%c", con_data);
    reg         vblank = 0, hblank = 0;
 
    iop_top dut
@@ -22,21 +24,34 @@ module tb_iop;
       .clk1x(clk1x), .clk2x(clk2x), .clk3x(clk3x), .reset(reset),
       .hblank(hblank), .vblank(vblank), .ext_irq(32'h0), .pad0_buttons(16'h5A3C),
       .rom_wr(rom_wr), .rom_addr(rom_addr), .rom_data(rom_data),
-      .post_code(post_code), .post_wr(post_wr),
+      .post_code(post_code), .post_wr(post_wr), .con_wr(con_wr), .con_data(con_data),
       .cpu_error(cpu_error), .mem_idle(mem_idle)
    );
 
    reg [127:0] spu_row;
-   reg [31:0] image [0:4095];
-   integer i, t0;
+   reg [31:0] image [0:1048575];        // up to the full 4 MB ROM (a real BIOS)
+   // where the CPU was: rings of the last instruction fetches and data accesses
+   reg [31:0] fetch_ring [0:63]; reg [31:0] data_ring [0:31]; reg [31:0] data_ring_d [0:31]; reg data_ring_w [0:31];
+   integer nfetch = 0, ndata = 0; reg [31:0] last_if = 0;
+   always @(posedge clk1x) begin
+      if (dut.mem_request && !dut.mem_isData && dut.mem_addressInstr != last_if) begin
+         fetch_ring[nfetch % 64] <= dut.mem_addressInstr; nfetch <= nfetch + 1; last_if <= dut.mem_addressInstr;
+      end
+      if (dut.mem_request && dut.mem_isData) begin
+         data_ring[ndata % 32] <= dut.mem_addressData; data_ring_d[ndata % 32] <= dut.mem_dataWrite; data_ring_w[ndata % 32] <= !dut.mem_rnw; ndata <= ndata + 1;
+      end
+   end
+   integer i, t0, words, run_ms;
    string romfile;
 
    initial begin
       if (!$value$plusargs("rom=%s", romfile)) romfile = "boot_test.hex";
+      if (!$value$plusargs("words=%d", words)) words = 4096;     // +words=1048576 for a BIOS
+      if (!$value$plusargs("ms=%d", run_ms)) run_ms = 80;        // timeout in ms of IOP time
       $readmemh(romfile, image);
       // load the ROM through its write port while in reset
       @(posedge clk1x);
-      for (i = 0; i < 4096; i = i + 1) begin
+      for (i = 0; i < words; i = i + 1) begin
          rom_wr <= 1; rom_addr <= i; rom_data <= image[i];
          @(posedge clk1x);
       end
@@ -73,8 +88,12 @@ module tb_iop;
    end
 
    initial begin
-      #(P1 * 3_000_000);   // ~80 ms of IOP time
+      #(P1 * 36875 * run_ms);   // run_ms ms of IOP time at 36.875 MHz
       $display("FAIL: timeout, last POST %02x", post_code);
+      $display("last %0d distinct instruction fetches (oldest first):", nfetch < 64 ? nfetch : 64);
+      for (i = (nfetch < 64 ? 0 : nfetch - 64); i < nfetch; i = i + 1) $display("   IF  %08x", fetch_ring[i % 64]);
+      $display("last %0d data accesses (oldest first):", ndata < 32 ? ndata : 32);
+      for (i = (ndata < 32 ? 0 : ndata - 32); i < ndata; i = i + 1) $display("   %s %08x %08x", data_ring_w[i % 32] ? "ST" : "LD", data_ring[i % 32], data_ring_d[i % 32]);
       $finish;
    end
 endmodule

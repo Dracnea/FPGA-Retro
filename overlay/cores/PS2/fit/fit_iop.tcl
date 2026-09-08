@@ -15,7 +15,7 @@ read_vhdl -vhdl2008 -library mem [list \
   $up/SyncRamDualByteEnable.vhd $up/dpram.vhd $up/export.vhd $up/divider.vhd $up/datacache.vhd \
   $up/cpu.vhd $up/timer.vhd $up/memctrl.vhd \
   $up/spu_gauss.vhd $up/spu_ram.vhd $up/spu.vhd \
-  $core/rtl/iop/iop_regstub.vhd $core/rtl/iop/iop_intc.vhd $core/rtl/iop/iop_timer32.vhd \
+  $core/rtl/iop/iop_regstub.vhd $core/rtl/iop/iop_console.vhd $core/rtl/iop/iop_intc.vhd $core/rtl/iop/iop_timer32.vhd \
   $core/rtl/iop/iop_ram.vhd $core/rtl/iop/iop_spuram.vhd $core/rtl/iop/iop_spu2.vhd \
   $core/rtl/iop/iop_sio2.vhd $core/rtl/iop/iop_cdvd.vhd \
   $core/rtl/iop/iop_memorymux.vhd $core/rtl/iop/iop_top.vhd]

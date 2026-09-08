@@ -21,7 +21,12 @@ cp "$HERE/boot_test.hex" .
 
 # Altera compatibility shims (the PSX RAM wrappers instantiate altsyncram/altdpram)
 xvhdl -2008 --work altera_mf "$OVL/rtl/altera_compat/altera_mf_components.vhd" > xvhdl_mf.log 2>&1
-xvlog --work mem "$OVL"/rtl/altera_compat/altsyncram.v "$OVL"/rtl/altera_compat/altdpram.v > xvlog_compat.log 2>&1
+# altdpram.v grew three ports for the Saturn wrappers (rdaddressstall,
+# wraddressstall, sclr; unused in the model body). The PSX register file binds
+# the model from VHDL without them, which synthesis accepts and xsim's
+# elaboration does not, so simulate a copy without those ports.
+mkdir -p work && grep -vE '^\s*input\s+wire\s+(rdaddressstall|wraddressstall|sclr)\b' "$OVL"/rtl/altera_compat/altdpram.v > work/altdpram_sim.v
+xvlog --work mem "$OVL"/rtl/altera_compat/altsyncram.v work/altdpram_sim.v > xvlog_compat.log 2>&1
 
 # Everything else into library mem, so `entity mem.X` and `entity work.X` both resolve
 # (Quartus folds all libraries into work; this reproduces that, as tools/core-fit.py does).
@@ -31,7 +36,7 @@ xvhdl -2008 --work mem \
   "$UP/SyncRamDualByteEnable.vhd" "$UP/dpram.vhd" "$UP/export.vhd" "$UP/divider.vhd" "$UP/datacache.vhd" \
   "$UP/cpu.vhd" "$UP/timer.vhd" "$UP/memctrl.vhd" \
   "$UP/spu_gauss.vhd" "$UP/spu_ram.vhd" "$UP/spu.vhd" \
-  "$CORE/rtl/iop/iop_regstub.vhd" "$CORE/rtl/iop/iop_intc.vhd" "$CORE/rtl/iop/iop_timer32.vhd" \
+  "$CORE/rtl/iop/iop_regstub.vhd" "$CORE/rtl/iop/iop_console.vhd" "$CORE/rtl/iop/iop_intc.vhd" "$CORE/rtl/iop/iop_timer32.vhd" \
   "$CORE/rtl/iop/iop_ram.vhd" "$CORE/rtl/iop/iop_spuram.vhd" "$CORE/rtl/iop/iop_spu2.vhd" \
   "$CORE/rtl/iop/iop_sio2.vhd" "$CORE/rtl/iop/iop_cdvd.vhd" \
   "$CORE/rtl/iop/iop_memorymux.vhd" "$CORE/rtl/iop/iop_top.vhd" \
@@ -41,5 +46,5 @@ xelab -debug off --relax -L mem -L altera_mf -s iop mem.$TB > xelab.log 2>&1 || 
 # XSIM_ARGS passes plusargs to the debug bench, e.g.
 #   XSIM_ARGS="-testplusarg cycles=40000 -testplusarg quiet=1" ./run_sim.sh --debug
 if [[ $TB == tb_iop_dbg ]]; then xsim iop -R ${XSIM_ARGS:-} 2>&1 | grep -v "^#" | tee xsim.log; exit 0; fi
-xsim iop -R 2>&1 | tee xsim.log | grep -E "POST|PASS|FAIL|reset released|Error|error" || true
+xsim iop -R ${XSIM_ARGS:-} 2>&1 | tee xsim.log | grep -E "POST|PASS|FAIL|reset released|Error|error" || true
 grep -q "^PASS" xsim.log
