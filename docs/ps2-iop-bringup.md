@@ -374,7 +374,57 @@ FAIL: timeout, last POST 07           (inside the ROM scan for TBIN: 512 KB in 1
 So the first thing a real BIOS proved is that the IOP core was reporting a
 PS1 CPU. `iop_top` now loads PRId `0x1F` through the CPU's savestate port
 during reset (the upstream CPU is untouched; `IOP_PRID` in `iop_top.vhd`).
-The same run with that value, and the run on the card through the
-diagnostic image (`c1100_ps2_diag`: UART, POST ring with cycle stamps, a
-stall detector, and a LiteScope on the CPU bus; `tools/ps2iop/bios_run.py`),
-are the next measurements.
+**xsim, same ROM, PRId `0x1F`, 90 ms of IOP time:**
+
+```
+[28517740000] POST fc                 (table B's own write)
+[28699620000] POST 02                 (the PS2 init table, not the PS1 one)
+[29041353000] POST 03 04 05
+[30089068000] POST 08
+[30098481000] POST 09                 (the search for IOPBOOT)
+FAIL: timeout, last POST 09
+last 64 distinct instruction fetches: ... bfc4ab1c bfc4ab20 ... bfc4ac18 (a loop)
+last data accesses:  LD 000016f0 = 00001c90   ST 000016f0 = 3c020000
+                     LD 000016f4 = 00000000   ST 000016f4 = 244232c0
+```
+
+`IOPBOOT` lives at rom0+0x4A000 = `0xBFC4A000`, so the CPU is inside it, and
+that loop (`0xBFC4AB1C`-`0xBFC4AC1C`) is its **ELF relocation pass**: it reads
+relocation entries, forms a hi/lo pair and patches the two instructions it
+points at. The stores prove it — `3c020000` is `lui $v0,0` and `244232c0` is
+`addiu $v0,$v0,0x32C0`, a relocated address being written into a module that
+has just been copied into IOP RAM at `0x16F0`. **So the BIOS reaches its IOP
+kernel loader and starts loading the modules `IOPBTCONF` lists**, and it does
+so on this core, with this memory map, with the peripherals that exist.
+
+Simulation cannot go much further: 90 ms of console time cost about an hour of
+xsim, and IOPBOOT has ~30 modules to load. The card runs it in real time,
+which is what the diagnostic image is for.
+
+## The diagnostic image and running a BIOS on the card
+
+`c1100_ps2_diag` (`overlay/mistex_boards/c1100_ps2_diag.py`, md5
+`43545949277f48ce1463be7ea31b213f`, WNS +0.390 ns, CSR map of the plain image
+unchanged) is `c1100_ps2_iop` plus:
+
+- **UARTbone** on the card's FPGA UART 0, so every register is reachable
+  without PCIe (`/dev/ttyUSB2` at 115200; `tools/uart-probe.sh` finds it).
+- **A POST ring**: the last 64 POST writes, each with the IOP cycle count at
+  which it happened, so a fast sequence is not lost between host polls.
+- **A stall detector**: cycles since the CPU last issued a bus request, and a
+  flag once 2^22 of them (114 ms) pass with none.
+- **The serial console**: `iop_console.vhd` answers the IOP's SIO1 port
+  (`0x1F801050`), where the kernel's `Kprintf` writes, always ready, and every
+  byte goes into a FIFO the host drains. This is how the IOP kernel says what
+  it is doing.
+- **A LiteScope** in the IOP clock domain on the CPU's memory bus (address,
+  data, write mask, request/done), the POST writes, `cpu_error` and the stall
+  flag, run-length encoded and triggered by the stall flag with the history
+  before it, so a hang leaves the last few thousand bus transactions readable.
+
+`sudo tools/ps2iop/bios-hw.sh /path/to/rom0.bin [seconds]` does the whole run:
+JTAG load, PCIe rescan and driver, then (as the invoking user)
+`tools/ps2iop/bios_run.py`, which streams the 4 MB image into the ROM in about
+two seconds, releases reset, watches POST, and then prints the ring, the
+console text, the stall state and the decoded bus trace into
+`build/ps2_bios/<timestamp>-<name>/`.
