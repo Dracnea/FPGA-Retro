@@ -1,1 +1,0 @@
-xsim {hps} -autoloadwcfg -runall

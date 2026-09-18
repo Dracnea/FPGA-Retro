@@ -22,9 +22,7 @@ venv/
 # compiled test tools
 tools/frametest/frametest
 
-# PS2 IOP simulation and fit scratch
-overlay/cores/PS2/sim/work/
-overlay/cores/PS2/sim/work_dbg/
-overlay/cores/PS2/sim/run_sim*.out
-overlay/cores/PS2/sim/*.hex
-overlay/cores/PS2/fit/run_fit*.out
+# Simulation scratch. run_sim.sh does `rm -rf work` and regenerates everything
+# in it, including the .v/.sv the generators emit -- so nothing under work/ can
+# be tracked without a sim run deleting it.
+overlay/rtl/*/sim/work/
