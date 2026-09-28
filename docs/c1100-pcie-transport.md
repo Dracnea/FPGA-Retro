@@ -367,9 +367,10 @@ the image's `csr.csv`. Pinning the pcie_* CSR pages to fixed indices in
 every C1100 target, so one driver serves all images, is the cleaner
 follow-up.
 
-Everything below the enumeration section for
-`c1100_hps_test`, `c1100_hps_video_test` and `c1100_ps2_iop` is being
-re-measured on images rebuilt with that BAR; the PS2 IOP `hw-test.sh`
+`c1100_hps_test`, `c1100_hps_video_test` and `c1100_ps2_iop` were all
+rebuilt with that BAR (commits `da8a2d1` and `939cb24`, 2026-09-07) and
+re-measured; `bitstreams/MANIFEST.md` carries their hardware results. The
+earlier PS2 IOP `hw-test.sh`
 output of 2026-09-07 17:24 (POST FF, `cpu_error` 1, counts 0xffffffff) was
 the all-ones read, not an IOP result.
 
